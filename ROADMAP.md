@@ -22,6 +22,8 @@ Everything here is designed around one hard constraint: upstream Ladybird moves 
 
 Before stacking more features on top of Tree-Style Tabs, we rebrand to **Superbird**, isolate its identity so it coexists cleanly with stock Ladybird, and lay down one reusable module framework.
 
+> **Status: ✅ Shipped (M0).** Superbird has its own app, profile, IPC, and desktop identity; `Core/` provides `SuperbirdModule`, `ModuleRegistry` + action bus, and the `WindowHost` seam; Tree-Style Tabs is module #1 with its actions on the bus; `about:settings -> Superbird` toggles modules at runtime.
+
 ### 0A. Rename & Side-by-Side Coexistence with Stock Ladybird
 Right now the fork inherits Ladybird's app identity, profile directory, and single-instance lock, so running both browsers at once collides on the profile lock and shares `Sessions.db` / `Settings.json`.
 
@@ -134,7 +136,7 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 
 | Milestone | Scope | Upstream Patch Footprint | Key Verification |
 | :--- | :--- | :--- | :--- |
-| **M0** | Tier 0: Rename to Superbird + coexistence (`Superbird` profile/bundle/lock) + `SuperbirdModule` registry + `about:settings -> Superbird` + migrate Tree Tabs | Small (Profile, App identity, 1 `WindowHost` seam, 1 Settings tab) | Both browsers run side-by-side; Tree Tabs toggleable on/off cleanly; green macOS + Linux CI |
+| **M0** ✅ | Tier 0: Rename to Superbird + coexistence (`Superbird` profile/bundle/lock) + `SuperbirdModule` registry + `about:settings -> Superbird` + migrate Tree Tabs | Small (Profile, App identity, 1 `WindowHost` seam, 1 Settings tab) | Both browsers run side-by-side; Tree Tabs toggleable on/off cleanly; green macOS + Linux CI |
 | **M1** | Command Palette (`Cmd/Ctrl+K` / `F2`) + action bus | Tiny (1 shortcut hook) | Fuzzy/math unit tests + opens & executes actions on macOS + Linux |
 | **M2** | Reader View (Hub IPC extraction + C++23 `ArticleExtractor` + reader overlay & typography controls) | Small (1 read-only Hub/RemoteView IPC message + address bar icon hook) | `ArticleExtractor` sanitization & scoring unit tests + green macOS + Linux CI |
 | **M3** | Workspaces (Spaces) + `Workspaces.db` + sidebar/toolbar switcher | Small (`TabWidget` / `TreeTabView` filter seam) | Workspace model unit tests + works with both Tree Tabs and regular tabs |

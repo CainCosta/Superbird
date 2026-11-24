@@ -56,6 +56,31 @@ git add patches && git commit -m "..."
 - `make build` re-applies automatically when `patches/` changes (e.g. after `git pull`), but refuses if
   `upstream/` has un-exported work.
 
+### Adding a Superbird module
+
+Modules live in `overlay/UI/Qt/Superbird/Modules/<Name>/` (Tree-Style Tabs is the reference):
+
+1. Subclass `Superbird::SuperbirdModule` (`Core/Module.h`) and override only the window/tab hooks you need.
+   `WindowHost` creates one instance per `BrowserWindow`; no new `BrowserWindow` seams should be needed.
+2. Give it a `ModuleInfo` (id, name, description, default) and register its actions on the
+   `ModuleRegistry` action bus. Keep the action table Qt-free so `tests/` can cover it.
+3. Register it in `WindowHost::register_compiled_modules()`. That adds it to the registry, the action bus,
+   and the `about:settings` -> **Superbird** toggle list (no `LibWebView` patch needed).
+4. Add an `option(SUPERBIRD_MODULE_<NAME> ...)` to `overlay/Meta/CMake/SuperbirdModules.cmake` and guard
+   its sources in `overlay/UI/Qt/Superbird/CMakeLists.txt`.
+5. React to `on_enabled_changed(bool)`: a disabled module must leave no UI behind.
+
+### Running next to stock Ladybird
+
+Superbird has its own identity, so both browsers can run at once:
+
+| | Superbird | Ladybird |
+|---|---|---|
+| macOS bundle | `Superbird.app`, `org.superbird.Superbird` | `Ladybird.app`, `org.ladybird.Ladybird` |
+| Profile root | `~/Library/Application Support/Superbird` (macOS), `~/.local/share/Superbird` + `~/.config/Superbird` (Linux) | `.../Ladybird` |
+| Mach bootstrap names | `Superbird-<profile>`, `Superbird-UI` | `Ladybird-<profile>`, `Ladybird-UI` |
+| Linux desktop id / package | `org.superbird.Superbird`, `/opt/superbird`, `/usr/bin/superbird` | `org.ladybird.Ladybird`, `/opt/ladybird`, `/usr/bin/ladybird` |
+
 ### Bumping upstream Ladybird
 
 ```sh

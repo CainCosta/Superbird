@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.superbird.Superbird</id>
+
+  <name>Superbird</name>
+  <summary>A modular browser built on Ladybird</summary>
+
+  <developer id="org.superbird">
+    <name>Superbird contributors</name>
+  </developer>
+
+  <metadata_license>0BSD</metadata_license>
+  <project_license>BSD-2-Clause</project_license>
+  <content_rating type="oars-1.1" />
+
+  <description>
+    <p>
+      Superbird is a fork of the Ladybird web browser that adds optional power modules, such as tree-style tabs,
+      which can each be turned on or off. It keeps its own profile, so it can run side by side with Ladybird.
+    </p>
+  </description>
+
+  <provides>
+    <mediatype>text/html</mediatype>
+    <mediatype>text/xml</mediatype>
+    <mediatype>application/xhtml+xml</mediatype>
+    <mediatype>x-scheme-handler/http</mediatype>
+    <mediatype>x-scheme-handler/https</mediatype>
+  </provides>
+
+  <launchable type="desktop-id">org.superbird.Superbird.desktop</launchable>
+  <releases>
+    <release version="@METAINFO_RELEASE_VERSION@" type="@METAINFO_RELEASE_TYPE@" date="@DATE@">
+      <description>
+        <p>
+          @METAINFO_RELEASE_DESCRIPTION@
+        </p>
+      </description>
+    </release>
+  </releases>
+</component>

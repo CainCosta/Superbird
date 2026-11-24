@@ -7,11 +7,9 @@
 #pragma once
 
 #include <AK/NonnullOwnPtr.h>
-#include <AK/Optional.h>
 #include <AK/StringView.h>
 #include <AK/Vector.h>
 #include <AK/kmalloc.h>
-#include <UI/Qt/Superbird/Core/Action.h>
 #include <UI/Qt/Superbird/Core/Module.h>
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
 
@@ -27,8 +25,8 @@ namespace Superbird {
 
 class TreeTabsModule;
 
-// Single per-BrowserWindow seam that owns all compiled Superbird WindowModules and fans out
-// lifecycle, menu, settings, and action queries so BrowserWindow stays minimal on upstream rebases.
+// Single per-BrowserWindow seam that owns all compiled SuperbirdModules and fans out
+// lifecycle, menu, and settings hooks so BrowserWindow stays minimal on upstream rebases.
 class WindowHost final : public ModuleRegistryObserver {
     AK_MAKE_NONCOPYABLE(WindowHost);
     AK_MAKE_NONMOVABLE(WindowHost);
@@ -64,14 +62,12 @@ public:
     void attach_window_tab_layout_menu(QMenu& tab_layout_menu);
     void update_window_tab_layout_menu();
 
-    Vector<ActionDescriptor> collect_actions(Optional<StringView> query = {}) const;
-
 private:
     virtual void module_enabled_changed(StringView module_id, bool enabled) override;
 
-    Ladybird::BrowserWindow& m_window;
-    Vector<NonnullOwnPtr<WindowModule>> m_modules;
-    TreeTabsModule* m_tree_tabs_module { nullptr };
+    [[maybe_unused]] Ladybird::BrowserWindow& m_window;
+    Vector<NonnullOwnPtr<SuperbirdModule>> m_modules;
+    [[maybe_unused]] TreeTabsModule* m_tree_tabs_module { nullptr };
 };
 
 }

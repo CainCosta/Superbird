@@ -62,7 +62,7 @@ public:
     void add_observer(ModuleRegistryObserver&);
     void remove_observer(ModuleRegistryObserver&);
 
-    // App-wide action bus (modules can also expose per-window actions via WindowModule::collect_actions).
+    // App-wide action bus. Modules register their actions once at startup; triggers act on the active window.
     void register_action(ActionDescriptor);
     void unregister_actions_for_module(StringView module_id);
 

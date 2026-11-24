@@ -20,6 +20,9 @@ fi
 echo "pre-push: running unit tests..."
 CXX="${CXX:-clang++}" "$root/scripts/test-unit.sh"
 if command -v node >/dev/null; then
-    node --check "$up/Base/res/ladybird/about-pages/settings/tabs.js"
-    node --check "$up/Base/res/ladybird/about-pages/settings/superbird.js"
+    node --check "$root/overlay/Base/res/ladybird/about-pages/settings/superbird.js"
+    # tabs.js is patched upstream; check it only while upstream/ has the patches applied.
+    if git -C "$up" rev-parse --abbrev-ref HEAD 2>/dev/null | grep -qx superbird; then
+        node --check "$up/Base/res/ladybird/about-pages/settings/tabs.js"
+    fi
 fi

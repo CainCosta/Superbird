@@ -7,6 +7,7 @@
 #include <UI/Qt/Application.h>
 #include <UI/Qt/BrowserWindow.h>
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
+#include <UI/Qt/Superbird/Core/WindowHost.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabController.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabView.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabsModule.h>
@@ -239,150 +240,103 @@ void TreeTabsModule::update_window_tab_layout_menu()
     }
 }
 
-void TreeTabsModule::collect_actions(Vector<ActionDescriptor>& out) const
+namespace {
+
+// Routes Tree-Style Tabs actions from the action bus to the active window's tree.
+class ActiveWindowTreeTabsHandler final : public TreeTabsCommandHandler {
+public:
+    virtual bool can_run(TreeTabsCommand command) const override
+    {
+        if (command == TreeTabsCommand::ToggleMode)
+            return true;
+
+        auto* window = Ladybird::Application::the().active_window_if_any();
+        if (!window)
+            return false;
+        auto* controller = window->superbird().tree_tab_controller();
+        auto* tab = window->current_tab();
+        if (!controller || !controller->is_enabled() || !tab)
+            return false;
+
+        switch (command) {
+        case TreeTabsCommand::ToggleMode:
+            return true;
+        case TreeTabsCommand::NewChildTab:
+        case TreeTabsCommand::IndentTab:
+        case TreeTabsCommand::OutdentTab:
+            return !tab->is_pinned();
+        case TreeTabsCommand::ToggleBranch:
+        case TreeTabsCommand::BookmarkBranch:
+        case TreeTabsCommand::CloseBranch:
+            return controller->has_children(*tab);
+        case TreeTabsCommand::UnloadBranch:
+            return controller->has_unloadable_tabs_in_branch(*tab);
+        case TreeTabsCommand::MoveBranchToNewWindow:
+            return controller->has_children(*tab) && static_cast<int>(controller->descendant_count(*tab) + 1) < window->tab_count();
+        }
+        VERIFY_NOT_REACHED();
+    }
+
+    virtual void run(TreeTabsCommand command) override
+    {
+        if (command == TreeTabsCommand::ToggleMode) {
+            toggle_tree_tabs_mode();
+            return;
+        }
+        if (!can_run(command))
+            return;
+
+        auto& window = Ladybird::Application::the().active_window();
+        auto& controller = *window.superbird().tree_tab_controller();
+        auto& tab = *window.current_tab();
+
+        switch (command) {
+        case TreeTabsCommand::ToggleMode:
+            break;
+        case TreeTabsCommand::NewChildTab:
+            controller.new_child_tab(tab);
+            break;
+        case TreeTabsCommand::ToggleBranch:
+            controller.toggle_branch_collapsed(tab);
+            break;
+        case TreeTabsCommand::UnloadBranch:
+            controller.unload_branch(tab);
+            break;
+        case TreeTabsCommand::BookmarkBranch:
+            controller.bookmark_branch(tab);
+            break;
+        case TreeTabsCommand::MoveBranchToNewWindow:
+            controller.move_branch_to_new_window(tab);
+            break;
+        case TreeTabsCommand::CloseBranch:
+            controller.close_branch(tab);
+            break;
+        case TreeTabsCommand::IndentTab:
+            controller.indent_tab(tab);
+            break;
+        case TreeTabsCommand::OutdentTab:
+            controller.outdent_tab(tab);
+            break;
+        }
+    }
+
+private:
+    static void toggle_tree_tabs_mode()
+    {
+        auto tab_settings = Ladybird::Application::settings().tab_settings();
+        tab_settings.tree_tabs_enabled = !(tab_settings.vertical_tabs_enabled && tab_settings.tree_tabs_enabled);
+        if (tab_settings.tree_tabs_enabled)
+            tab_settings.vertical_tabs_enabled = true;
+        Ladybird::Application::settings().set_tab_settings(tab_settings);
+    }
+};
+
+}
+
+void TreeTabsModule::register_actions(ModuleRegistry& registry)
 {
-    if (!ModuleRegistry::the().is_enabled(MODULE_ID))
-        return;
-
-    auto* controller = m_controller.ptr();
-    auto* window = &m_window;
-
-    out.append(ActionDescriptor {
-        .id = "tree_tabs.toggle_mode"sv,
-        .module_id = MODULE_ID,
-        .title = "Toggle Tree-Style Tabs"sv,
-        .category = "Tree Tabs"sv,
-        .is_available = [] { return true; },
-        .trigger = [controller] {
-            auto tab_settings = Ladybird::Application::settings().tab_settings();
-            bool enable = !controller->is_enabled();
-            tab_settings.tree_tabs_enabled = enable;
-            if (enable && !tab_settings.vertical_tabs_enabled)
-                tab_settings.vertical_tabs_enabled = true;
-            Ladybird::Application::settings().set_tab_settings(tab_settings);
-        },
-    });
-
-    out.append(ActionDescriptor {
-        .id = "tree_tabs.new_child_tab"sv,
-        .module_id = MODULE_ID,
-        .title = "New Child Tab"sv,
-        .category = "Tree Tabs"sv,
-        .is_available = [controller, window] {
-            auto* current = window->current_tab();
-            return controller->is_enabled() && current && !current->is_pinned();
-        },
-        .trigger = [controller, window] {
-            if (auto* current = window->current_tab(); current && !current->is_pinned())
-                controller->new_child_tab(*current);
-        },
-    });
-
-    out.append(ActionDescriptor {
-        .id = "tree_tabs.toggle_branch"sv,
-        .module_id = MODULE_ID,
-        .title = "Collapse / Expand Current Branch"sv,
-        .category = "Tree Tabs"sv,
-        .is_available = [controller, window] {
-            auto* current = window->current_tab();
-            return controller->is_enabled() && current && controller->has_children(*current);
-        },
-        .trigger = [controller, window] {
-            if (auto* current = window->current_tab(); current && controller->has_children(*current))
-                controller->toggle_branch_collapsed(*current);
-        },
-    });
-
-    out.append(ActionDescriptor {
-        .id = "tree_tabs.unload_branch"sv,
-        .module_id = MODULE_ID,
-        .title = "Unload Current Branch"sv,
-        .category = "Tree Tabs"sv,
-        .is_available = [controller, window] {
-            auto* current = window->current_tab();
-            return controller->is_enabled() && current && controller->has_unloadable_tabs_in_branch(*current);
-        },
-        .trigger = [controller, window] {
-            if (auto* current = window->current_tab())
-                controller->unload_branch(*current);
-        },
-    });
-
-    out.append(ActionDescriptor {
-        .id = "tree_tabs.bookmark_branch"sv,
-        .module_id = MODULE_ID,
-        .title = "Bookmark Current Branch"sv,
-        .category = "Tree Tabs"sv,
-        .is_available = [controller, window] {
-            auto* current = window->current_tab();
-            return controller->is_enabled() && current && controller->has_children(*current);
-        },
-        .trigger = [controller, window] {
-            if (auto* current = window->current_tab())
-                controller->bookmark_branch(*current);
-        },
-    });
-
-    out.append(ActionDescriptor {
-        .id = "tree_tabs.move_branch_to_new_window"sv,
-        .module_id = MODULE_ID,
-        .title = "Move Current Branch to New Window"sv,
-        .category = "Tree Tabs"sv,
-        .is_available = [controller, window] {
-            auto* current = window->current_tab();
-            return controller->is_enabled() && current && controller->has_children(*current)
-                && static_cast<int>(controller->descendant_count(*current) + 1) < window->tab_count();
-        },
-        .trigger = [controller, window] {
-            if (auto* current = window->current_tab())
-                controller->move_branch_to_new_window(*current);
-        },
-    });
-
-    out.append(ActionDescriptor {
-        .id = "tree_tabs.close_branch"sv,
-        .module_id = MODULE_ID,
-        .title = "Close Current Branch"sv,
-        .category = "Tree Tabs"sv,
-        .is_available = [controller, window] {
-            auto* current = window->current_tab();
-            return controller->is_enabled() && current && controller->has_children(*current);
-        },
-        .trigger = [controller, window] {
-            if (auto* current = window->current_tab())
-                controller->close_branch(*current);
-        },
-    });
-
-    out.append(ActionDescriptor {
-        .id = "tree_tabs.indent_tab"sv,
-        .module_id = MODULE_ID,
-        .title = "Indent Current Tab"sv,
-        .category = "Tree Tabs"sv,
-        .is_available = [controller, window] {
-            auto* current = window->current_tab();
-            return controller->is_enabled() && current && !current->is_pinned();
-        },
-        .trigger = [controller, window] {
-            if (auto* current = window->current_tab())
-                controller->indent_tab(*current);
-        },
-    });
-
-    out.append(ActionDescriptor {
-        .id = "tree_tabs.outdent_tab"sv,
-        .module_id = MODULE_ID,
-        .title = "Outdent Current Tab"sv,
-        .category = "Tree Tabs"sv,
-        .is_available = [controller, window] {
-            auto* current = window->current_tab();
-            return controller->is_enabled() && current && !current->is_pinned();
-        },
-        .trigger = [controller, window] {
-            if (auto* current = window->current_tab())
-                controller->outdent_tab(*current);
-        },
-    });
+    static ActiveWindowTreeTabsHandler handler;
+    register_tree_tabs_actions(registry, handler);
 }
 
 }

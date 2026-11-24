@@ -15,11 +15,28 @@
 
 namespace Superbird {
 
-void WindowHost::register_compiled_modules()
+// Registers a compiled module once: with the module registry, on the action bus, and in the settings catalog that
+// about:settings -> Superbird lists toggles from.
+[[maybe_unused]] static void register_compiled_module(ModuleInfo const& info, void (*register_actions)(ModuleRegistry&))
 {
     auto& registry = ModuleRegistry::the();
+    if (!registry.register_module(info))
+        return;
+
+    register_actions(registry);
+
+    Ladybird::Application::settings().register_superbird_module({
+        .id = MUST(String::from_utf8(info.id)),
+        .name = MUST(String::from_utf8(info.name)),
+        .description = MUST(String::from_utf8(info.description)),
+        .enabled_by_default = info.enabled_by_default,
+    });
+}
+
+void WindowHost::register_compiled_modules()
+{
 #if defined(SUPERBIRD_MODULE_TREE_TABS)
-    registry.register_module(TreeTabsModule::module_info());
+    register_compiled_module(TreeTabsModule::module_info(), TreeTabsModule::register_actions);
 #endif
 }
 
@@ -161,27 +178,6 @@ void WindowHost::update_window_tab_layout_menu()
 {
     for (auto& module : m_modules)
         module->update_window_tab_layout_menu();
-}
-
-Vector<ActionDescriptor> WindowHost::collect_actions(Optional<StringView> query) const
-{
-    Vector<ActionDescriptor> all;
-    for (auto const& module : m_modules) {
-        if (!ModuleRegistry::the().is_enabled(module->id()))
-            continue;
-        module->collect_actions(all);
-    }
-
-    auto filter = query.value_or(""sv);
-    Vector<ActionDescriptor> filtered;
-    for (auto& action : all) {
-        if (!action.available())
-            continue;
-        if (!ModuleRegistry::matches_query(action, filter))
-            continue;
-        filtered.append(move(action));
-    }
-    return filtered;
 }
 
 }

@@ -8,8 +8,6 @@
 
 #include <AK/Noncopyable.h>
 #include <AK/StringView.h>
-#include <AK/Vector.h>
-#include <UI/Qt/Superbird/Core/Action.h>
 
 class QMenu;
 
@@ -28,15 +26,16 @@ struct ModuleInfo {
     bool enabled_by_default { true };
 };
 
-// Base interface implemented by each per-BrowserWindow Superbird module.
-// Every hook has a no-op default so modules only override the lifecycle seams they actually need.
-class WindowModule {
-    AK_MAKE_NONCOPYABLE(WindowModule);
-    AK_MAKE_NONMOVABLE(WindowModule);
+// Interface implemented by every Superbird module. WindowHost creates one instance per BrowserWindow and fans
+// window/tab lifecycle, menu, settings, and style hooks out to it. Every hook has a no-op default so modules only
+// override the seams they actually need. App-wide actions go on the ModuleRegistry action bus instead.
+class SuperbirdModule {
+    AK_MAKE_NONCOPYABLE(SuperbirdModule);
+    AK_MAKE_NONMOVABLE(SuperbirdModule);
 
 public:
-    WindowModule() = default;
-    virtual ~WindowModule() = default;
+    SuperbirdModule() = default;
+    virtual ~SuperbirdModule() = default;
 
     virtual StringView id() const = 0;
 
@@ -60,8 +59,6 @@ public:
 
     virtual void attach_window_tab_layout_menu(QMenu&) { }
     virtual void update_window_tab_layout_menu() { }
-
-    virtual void collect_actions(Vector<ActionDescriptor>&) const { }
 };
 
 }

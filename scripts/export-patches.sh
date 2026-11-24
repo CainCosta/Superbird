@@ -23,9 +23,11 @@ if [[ "$BRANCH" != "superbird" ]]; then
     exit 1
 fi
 
-if [[ -n "$(git -C "$UPSTREAM_DIR" status --porcelain)" ]]; then
+# Untracked files are ignored: overlay/ symlinks show up as untracked wherever upstream's .gitignore re-includes a
+# path (e.g. `!/Base/**`), and format-patch only exports commits anyway.
+if [[ -n "$(git -C "$UPSTREAM_DIR" status --porcelain --untracked-files=no)" ]]; then
     echo "Error: upstream/ has uncommitted changes. Commit or stash them before exporting patches." >&2
-    git -C "$UPSTREAM_DIR" status --short >&2
+    git -C "$UPSTREAM_DIR" status --short --untracked-files=no >&2
     exit 1
 fi
 

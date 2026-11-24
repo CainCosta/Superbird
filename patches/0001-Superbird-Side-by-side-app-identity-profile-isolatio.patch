@@ -30,6 +30,19 @@ index c10e5199..33aec48e 100644
  configure_file(BrowserVersion.h.in BrowserVersion.h @ONLY)
  if (ENABLE_INSTALL_HEADERS)
      install(FILES "${CMAKE_CURRENT_BINARY_DIR}/BrowserVersion.h" COMPONENT Lagom_Development
+diff --git a/Libraries/LibDevTools/FirefoxClient.cpp b/Libraries/LibDevTools/FirefoxClient.cpp
+index d84b9989..4b71de86 100644
+--- a/Libraries/LibDevTools/FirefoxClient.cpp
++++ b/Libraries/LibDevTools/FirefoxClient.cpp
+@@ -60,7 +60,7 @@ static constexpr auto USER_CHROME_CSS = R"~~~(
+ 
+ static LexicalPath const& profile_directory()
+ {
+-    static NeverDestroyed<LexicalPath> path = LexicalPath::join(Core::StandardPaths::user_data_directory(), "Ladybird"sv, "DevTools"sv, "firefox-profile"sv);
++    static NeverDestroyed<LexicalPath> path = LexicalPath::join(Core::StandardPaths::user_data_directory(), "Superbird"sv, "DevTools"sv, "firefox-profile"sv);
+     return *path;
+ }
+ 
 diff --git a/Libraries/LibWebView/Application.cpp b/Libraries/LibWebView/Application.cpp
 index 88290113..72ac501a 100644
 --- a/Libraries/LibWebView/Application.cpp
@@ -74,11 +87,24 @@ index 9b371a01..4834ebc7 100644
      auto server_port = Core::MachPort::look_up_from_bootstrap_server(mach_server_name_for_process(process_name, pid));
      if (server_port.is_error())
          return HandoverResult { Handover::BrowserIsGone };
+diff --git a/Libraries/LibWebView/CrashReportStore.cpp b/Libraries/LibWebView/CrashReportStore.cpp
+index 99c06bbb..21edeeb0 100644
+--- a/Libraries/LibWebView/CrashReportStore.cpp
++++ b/Libraries/LibWebView/CrashReportStore.cpp
+@@ -38,7 +38,7 @@ using namespace Core::CrashReportData;
+ 
+ ByteString CrashReportStore::default_directory()
+ {
+-    return LexicalPath::join(Core::StandardPaths::user_data_directory(), "Ladybird"sv, "CrashReports"sv).string();
++    return LexicalPath::join(Core::StandardPaths::user_data_directory(), "Superbird"sv, "CrashReports"sv).string();
+ }
+ 
+ // The browser's own store. It moves into the profile once the profile is known.
 diff --git a/Libraries/LibWebView/NotificationBackendMacOS.mm b/Libraries/LibWebView/NotificationBackendMacOS.mm
 index f31e66bc..555c41ca 100644
 --- a/Libraries/LibWebView/NotificationBackendMacOS.mm
 +++ b/Libraries/LibWebView/NotificationBackendMacOS.mm
-@@ -60,7 +60,7 @@ NotificationBackendMacOS::NotificationBackendMacOS()
+@@ -60,7 +60,7 @@ static void on_main_thread(Function<void()> function)
      m_launch_token = MUST(String::from_utf8(StringView { [[[NSUUID UUID] UUIDString] UTF8String], strlen([[[NSUUID UUID] UUIDString] UTF8String]) }));
  
      // The center reports a user's dismissal only for a category that asks for it.
@@ -87,7 +113,7 @@ index f31e66bc..555c41ca 100644
                                                              actions:@[]
                                                    intentIdentifiers:@[]
                                                              options:UNNotificationCategoryOptionCustomDismissAction];
-@@ -131,7 +131,7 @@ void NotificationBackendMacOS::show(PlatformNotification const& notification)
+@@ -131,7 +131,7 @@ static void on_main_thread(Function<void()> function)
          content.subtitle = ns_string(notification.attribution);
          content.body = ns_string(platform_text(notification.data.body));
          content.threadIdentifier = ns_string(notification.attribution);
@@ -159,6 +185,45 @@ index 918ec037..9e411b2a 100644
      };
  
      TRY(create_profile_directories(paths));
+diff --git a/Meta/CMake/cmake_options.cmake b/Meta/CMake/cmake_options.cmake
+index 7032bfc7..9ac240f9 100644
+--- a/Meta/CMake/cmake_options.cmake
++++ b/Meta/CMake/cmake_options.cmake
+@@ -63,7 +63,7 @@ endif()
+ set(LADYBIRD_RELEASE_STAGE "Alpha")
+ 
+ # Like other browsers, our Linux packages keep Ladybird in a directory of its own.
+-set(LADYBIRD_PACKAGE_INSTALL_PREFIX "/opt/ladybird")
++set(LADYBIRD_PACKAGE_INSTALL_PREFIX "/opt/superbird")
+ 
+ option(ENABLE_ADDRESS_SANITIZER "Enable address sanitizer testing in gcc/clang" OFF)
+ option(ENABLE_MEMORY_SANITIZER "Enable memory sanitizer testing in gcc/clang" OFF)
+diff --git a/Services/WebDriver/main.cpp b/Services/WebDriver/main.cpp
+index d19798a1..a2139f81 100644
+--- a/Services/WebDriver/main.cpp
++++ b/Services/WebDriver/main.cpp
+@@ -207,7 +207,7 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
+ 
+         auto launch_browser_callback = [&](ByteString const& webdriver_endpoint, bool headless, Optional<ByteString> const& proxy_autoconfig_url) {
+             auto arguments = create_arguments(webdriver_endpoint, profile_name, profile_path, headless, expose_experimental_interfaces, expose_internals_object, force_cpu_painting, disable_sandbox, debug_process, default_time_zone, resource_substitution_map_path, proxy_autoconfig_url);
+-            return launch_process("Ladybird"sv, arguments.span());
++            return launch_process("Superbird"sv, arguments.span());
+         };
+ 
+         auto maybe_client = WebDriver::Client::try_create(maybe_buffered_socket.release_value(), move(launch_browser_callback));
+diff --git a/Tests/LibWebView/TestNotificationFreedesktopArguments.cpp b/Tests/LibWebView/TestNotificationFreedesktopArguments.cpp
+index 70e7e156..43932351 100644
+--- a/Tests/LibWebView/TestNotificationFreedesktopArguments.cpp
++++ b/Tests/LibWebView/TestNotificationFreedesktopArguments.cpp
+@@ -137,7 +137,7 @@ TEST_CASE(desktop_entry_names_the_application)
+ {
+     auto entry = hint(build_notify_arguments(notification("t"_utf16, "b"_utf16), {}, 0), "desktop-entry"sv);
+     EXPECT(entry.has_value());
+-    EXPECT_EQ(entry->value.get<String>(), "org.ladybird.Ladybird"_string);
++    EXPECT_EQ(entry->value.get<String>(), "org.superbird.Superbird"_string);
+ }
+ 
+ TEST_CASE(default_action_only_when_the_daemon_takes_actions)
 diff --git a/UI/CMakeLists.txt b/UI/CMakeLists.txt
 index 7ef5450a..08b00725 100644
 --- a/UI/CMakeLists.txt
@@ -257,7 +322,7 @@ index ec993c58..7f6663fe 100644
  
      if (!is_ladybird) {
 diff --git a/UI/cmake/InstallRules.cmake b/UI/cmake/InstallRules.cmake
-index a8b2bc48..9124933a 100644
+index a8b2bc48..2a8c18e7 100644
 --- a/UI/cmake/InstallRules.cmake
 +++ b/UI/cmake/InstallRules.cmake
 @@ -5,7 +5,7 @@ include(GNUInstallDirs)
@@ -291,3 +356,83 @@ index a8b2bc48..9124933a 100644
          set(qt_conf_plugins PlugIns)
  
          get_target_property(qt_core_type Qt6::Core TYPE)
+@@ -320,7 +320,7 @@ if (ENABLE_INSTALL_FREEDESKTOP_FILES OR LINUX)
+         set(METAINFO_RELEASE_TYPE "development")
+         set(METAINFO_RELEASE_DESCRIPTION "${LADYBIRD_RELEASE_STAGE} release.")
+     endif()
+-    configure_file("${FREEDESKTOP_RESOURCE_DIR}/org.ladybird.Ladybird.metainfo.xml.in" "${CMAKE_CURRENT_BINARY_DIR}/org.ladybird.Ladybird.metainfo.xml" @ONLY)
++    configure_file("${FREEDESKTOP_RESOURCE_DIR}/org.superbird.Superbird.metainfo.xml.in" "${CMAKE_CURRENT_BINARY_DIR}/org.superbird.Superbird.metainfo.xml" @ONLY)
+ endif()
+ 
+ # The archives and Linux packages leave these out: an archive can be unpacked anywhere, and the Linux packages carry
+@@ -329,20 +329,21 @@ if (ENABLE_INSTALL_FREEDESKTOP_FILES)
+     install(FILES
+         "${FREEDESKTOP_RESOURCE_DIR}/org.ladybird.Ladybird.svg"
+         DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
++        RENAME org.superbird.Superbird.svg
+         COMPONENT ladybird_Freedesktop
+     )
+     install(FILES
+-        "${FREEDESKTOP_RESOURCE_DIR}/org.ladybird.Ladybird.desktop"
++        "${FREEDESKTOP_RESOURCE_DIR}/org.superbird.Superbird.desktop"
+         DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
+         COMPONENT ladybird_Freedesktop
+     )
+     install(FILES
+-        "${FREEDESKTOP_RESOURCE_DIR}/org.ladybird.Ladybird.service"
++        "${FREEDESKTOP_RESOURCE_DIR}/org.superbird.Superbird.service"
+         DESTINATION "${CMAKE_INSTALL_DATADIR}/dbus-1/services"
+         COMPONENT ladybird_Freedesktop
+     )
+     install(FILES
+-        "${CMAKE_CURRENT_BINARY_DIR}/org.ladybird.Ladybird.metainfo.xml"
++        "${CMAKE_CURRENT_BINARY_DIR}/org.superbird.Superbird.metainfo.xml"
+         DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo"
+         COMPONENT ladybird_Freedesktop
+     )
+@@ -352,36 +353,37 @@ endif()
+ # and the debug symbols to the rest of the system.
+ if (LINUX)
+     set(system_integration_dir "${CMAKE_CURRENT_BINARY_DIR}/system_integration")
+-    set(packaged_ladybird "${LADYBIRD_PACKAGE_INSTALL_PREFIX}/bin/Ladybird")
+-    foreach (file IN ITEMS org.ladybird.Ladybird.desktop org.ladybird.Ladybird.service)
++    set(packaged_ladybird "${LADYBIRD_PACKAGE_INSTALL_PREFIX}/bin/Superbird")
++    foreach (file IN ITEMS org.superbird.Superbird.desktop org.superbird.Superbird.service)
+         file(READ "${FREEDESKTOP_RESOURCE_DIR}/${file}" contents)
+-        string(REGEX REPLACE "Exec=Ladybird( |\n|$)" "Exec=${packaged_ladybird}\\1" contents "${contents}")
++        string(REGEX REPLACE "Exec=Superbird( |\n|$)" "Exec=${packaged_ladybird}\\1" contents "${contents}")
+         file(WRITE "${system_integration_dir}/${file}" "${contents}")
+     endforeach()
+     file(MAKE_DIRECTORY "${system_integration_dir}/bin")
+-    file(CREATE_LINK "${packaged_ladybird}" "${system_integration_dir}/bin/ladybird" SYMBOLIC)
++    file(CREATE_LINK "${packaged_ladybird}" "${system_integration_dir}/bin/superbird" SYMBOLIC)
+ 
+-    install(FILES "${system_integration_dir}/bin/ladybird"
++    install(FILES "${system_integration_dir}/bin/superbird"
+         DESTINATION /usr/bin
+         COMPONENT ladybird_SystemIntegration
+         EXCLUDE_FROM_ALL
+     )
+-    install(FILES "${system_integration_dir}/org.ladybird.Ladybird.desktop"
++    install(FILES "${system_integration_dir}/org.superbird.Superbird.desktop"
+         DESTINATION /usr/share/applications
+         COMPONENT ladybird_SystemIntegration
+         EXCLUDE_FROM_ALL
+     )
+-    install(FILES "${system_integration_dir}/org.ladybird.Ladybird.service"
++    install(FILES "${system_integration_dir}/org.superbird.Superbird.service"
+         DESTINATION /usr/share/dbus-1/services
+         COMPONENT ladybird_SystemIntegration
+         EXCLUDE_FROM_ALL
+     )
+     install(FILES "${FREEDESKTOP_RESOURCE_DIR}/org.ladybird.Ladybird.svg"
+         DESTINATION /usr/share/icons/hicolor/scalable/apps
++        RENAME org.superbird.Superbird.svg
+         COMPONENT ladybird_SystemIntegration
+         EXCLUDE_FROM_ALL
+     )
+-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/org.ladybird.Ladybird.metainfo.xml"
++    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/org.superbird.Superbird.metainfo.xml"
+         DESTINATION /usr/share/metainfo
+         COMPONENT ladybird_SystemIntegration
+         EXCLUDE_FROM_ALL

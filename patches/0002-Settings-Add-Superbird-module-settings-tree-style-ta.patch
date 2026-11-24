@@ -194,7 +194,7 @@ index a9d41841..a2d2f6df 100644
      TAB_SETTINGS.verticalTabsExpandOnHover = verticalTabsExpandOnHover.checked;
      saveTabSettings();
 diff --git a/Libraries/LibWebView/Settings.cpp b/Libraries/LibWebView/Settings.cpp
-index 5afb3756..986f9a3d 100644
+index 5afb3756..32c8be3d 100644
 --- a/Libraries/LibWebView/Settings.cpp
 +++ b/Libraries/LibWebView/Settings.cpp
 @@ -61,9 +61,16 @@ static constexpr auto VERTICAL_TABS_EXPAND_ON_HOVER_KEY = "verticalTabsExpandOnH
@@ -333,7 +333,7 @@ index 5afb3756..986f9a3d 100644
      if (auto minutes = settings.as_object().get_integer<u32>(DISCARD_HIDDEN_TABS_AFTER_MINUTES_KEY); minutes.has_value())
          tab_settings.discard_hidden_tabs_after_minutes = *minutes;
      if (auto tab_processes = settings.as_object().get_string(TAB_PROCESSES_KEY); tab_processes.has_value()) {
-@@ -1320,6 +1400,42 @@ void Settings::set_tab_settings(TabSettings tab_settings)
+@@ -1320,6 +1400,53 @@ void Settings::set_tab_settings(TabSettings tab_settings)
          observer.tab_settings_changed();
  }
  
@@ -373,11 +373,22 @@ index 5afb3756..986f9a3d 100644
 +        observer.superbird_settings_changed();
 +}
 +
++void Settings::register_superbird_module(SuperbirdModuleDescriptor module)
++{
++    if (module.id.is_empty())
++        return;
++    for (auto const& existing : m_superbird_modules) {
++        if (existing.id == module.id)
++            return;
++    }
++    m_superbird_modules.append(move(module));
++}
++
  BrowsingBehavior Settings::parse_browsing_behavior(JsonValue const& settings)
  {
      if (!settings.is_object())
 diff --git a/Libraries/LibWebView/Settings.h b/Libraries/LibWebView/Settings.h
-index 798e2eee..f9a7b495 100644
+index 798e2eee..db75b81e 100644
 --- a/Libraries/LibWebView/Settings.h
 +++ b/Libraries/LibWebView/Settings.h
 @@ -98,6 +98,17 @@ enum class VerticalTabsPosition : u8 {
@@ -409,7 +420,7 @@ index 798e2eee..f9a7b495 100644
      Optional<u16> vertical_tabs_expanded_width;
      // A tab that was hidden for this many minutes is discarded, unless it does something the user would notice. Zero
      // means that tabs are kept however long they are hidden.
-@@ -113,6 +128,10 @@ struct TabSettings {
+@@ -113,6 +128,18 @@ struct TabSettings {
      TabProcesses tab_processes { TabProcesses::PerOrigin };
  };
  
@@ -417,10 +428,18 @@ index 798e2eee..f9a7b495 100644
 +    HashMap<String, bool> enabled_modules;
 +};
 +
++// A Superbird module compiled into this build, as the UI registers it for about:settings to list.
++struct SuperbirdModuleDescriptor {
++    String id;
++    String name;
++    String description;
++    bool enabled_by_default { true };
++};
++
  struct SearchEngineSettings {
      Optional<SearchEngine> engine;
      bool suggestions { false };
-@@ -199,6 +218,7 @@ public:
+@@ -199,6 +226,7 @@ public:
      virtual void appearance_changed() { }
      virtual void content_settings_changed() { }
      virtual void tab_settings_changed() { }
@@ -428,15 +447,16 @@ index 798e2eee..f9a7b495 100644
      virtual void browsing_behavior_changed() { }
      virtual void search_engine_settings_changed() { }
      virtual void autoplay_settings_changed() { }
-@@ -228,6 +248,7 @@ struct WEBVIEW_API SettingsData {
+@@ -228,6 +256,8 @@ struct WEBVIEW_API SettingsData {
      Appearance m_appearance;
      ContentSettings m_content_settings;
      TabSettings m_tab_settings;
 +    SuperbirdSettings m_superbird_settings;
++    Vector<SuperbirdModuleDescriptor> m_superbird_modules;
      BrowsingBehavior m_browsing_behavior;
  
      SearchEngineSettings m_search_engine_settings;
-@@ -324,6 +345,11 @@ public:
+@@ -324,6 +354,13 @@ public:
      TabSettings const& tab_settings() const { return m_tab_settings; }
      void set_tab_settings(TabSettings);
  
@@ -444,12 +464,14 @@ index 798e2eee..f9a7b495 100644
 +    SuperbirdSettings const& superbird_settings() const { return m_superbird_settings; }
 +    void set_superbird_settings(SuperbirdSettings);
 +    void set_superbird_module_enabled(String const& module_id, bool enabled);
++    void register_superbird_module(SuperbirdModuleDescriptor);
++    Vector<SuperbirdModuleDescriptor> const& superbird_modules() const { return m_superbird_modules; }
 +
      static BrowsingBehavior parse_browsing_behavior(JsonValue const&);
      BrowsingBehavior browsing_behavior() const;
      void set_browsing_behavior(BrowsingBehavior);
 diff --git a/Libraries/LibWebView/WebUI/SettingsUI.cpp b/Libraries/LibWebView/WebUI/SettingsUI.cpp
-index 6969e29d..8e1947a4 100644
+index 6969e29d..022239b4 100644
 --- a/Libraries/LibWebView/WebUI/SettingsUI.cpp
 +++ b/Libraries/LibWebView/WebUI/SettingsUI.cpp
 @@ -98,6 +98,9 @@ void SettingsUI::register_interfaces()
@@ -462,27 +484,25 @@ index 6969e29d..8e1947a4 100644
      register_interface("setSearchEngineSettings"sv, [this](auto const& data) {
          set_search_engine_settings(data);
      });
-@@ -236,6 +239,19 @@ void SettingsUI::load_features()
+@@ -236,6 +239,17 @@ void SettingsUI::load_features()
      features.set("verticalTabs"_string, application.supports_vertical_tabs());
      features.set("geolocation"_string, Core::GeolocationProvider::is_available());
  
 +    JsonArray superbird_modules;
-+#if defined(SUPERBIRD_MODULE_TREE_TABS)
-+    {
++    for (auto const& module : Application::settings().superbird_modules()) {
 +        JsonObject module_info;
-+        module_info.set("id"_string, "tree_tabs"_string);
-+        module_info.set("name"_string, "Tree-Style Tabs"_string);
-+        module_info.set("description"_string, "Organize vertical sidebar tabs into collapsible parent/child trees with drag-and-drop nesting and branch actions."_string);
-+        module_info.set("enabledByDefault"_string, true);
++        module_info.set("id"_string, module.id);
++        module_info.set("name"_string, module.name);
++        module_info.set("description"_string, module.description);
++        module_info.set("enabledByDefault"_string, module.enabled_by_default);
 +        superbird_modules.must_append(move(module_info));
 +    }
-+#endif
 +    features.set("superbirdModules"_string, move(superbird_modules));
 +
      async_send_message("loadFeatures"sv, move(features));
  }
  
-@@ -480,6 +496,19 @@ void SettingsUI::set_tab_settings(JsonValue const& tab_settings)
+@@ -480,6 +494,19 @@ void SettingsUI::set_tab_settings(JsonValue const& tab_settings)
      settings.set_tab_settings(parsed_tab_settings);
  }
  

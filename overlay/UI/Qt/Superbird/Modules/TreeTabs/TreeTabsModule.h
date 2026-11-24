@@ -10,6 +10,7 @@
 #include <AK/NonnullOwnPtr.h>
 #include <AK/kmalloc.h>
 #include <UI/Qt/Superbird/Core/Module.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabsActions.h>
 
 #include <QPointer>
 
@@ -25,13 +26,16 @@ class TreeTabController;
 namespace Superbird {
 
 // First Superbird module: wraps TreeTabController and attaches all Tree-Style Tabs UI seams
-// (sidebar widget, Tab context menu branch actions, window Tab Layout toggle, and Action bus entries).
-class TreeTabsModule final : public WindowModule {
+// (sidebar widget, Tab context menu branch actions, window Tab Layout toggle) and its action bus entries.
+class TreeTabsModule final : public SuperbirdModule {
 public:
     AK_ALLOC_WITH_KMALLOC;
 
-    static constexpr StringView MODULE_ID = "tree_tabs"sv;
+    static constexpr StringView MODULE_ID = TREE_TABS_MODULE_ID;
     static ModuleInfo module_info();
+
+    // Registers the Tree-Style Tabs actions on the app-wide action bus; they act on the active window.
+    static void register_actions(ModuleRegistry&);
 
     explicit TreeTabsModule(Ladybird::BrowserWindow& window);
     virtual ~TreeTabsModule() override;
@@ -61,8 +65,6 @@ public:
 
     virtual void attach_window_tab_layout_menu(QMenu& tab_layout_menu) override;
     virtual void update_window_tab_layout_menu() override;
-
-    virtual void collect_actions(Vector<ActionDescriptor>& out) const override;
 
 private:
     struct TabMenuActions {

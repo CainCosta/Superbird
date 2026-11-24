@@ -80,3 +80,11 @@ fi
     "$TMP_DIR/ak_stubs.cpp" \
     -o "$TMP_DIR/test_module_registry"
 "$TMP_DIR/test_module_registry"
+
+"$CXX" "${COMMON_FLAGS[@]}" \
+    "$ROOT_DIR/tests/TestTreeTabsActions.cpp" \
+    "$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/TreeTabs/TreeTabsActions.cpp" \
+    "$ROOT_DIR/overlay/UI/Qt/Superbird/Core/ModuleRegistry.cpp" \
+    "$TMP_DIR/ak_stubs.cpp" \
+    -o "$TMP_DIR/test_tree_tabs_actions"
+"$TMP_DIR/test_tree_tabs_actions"

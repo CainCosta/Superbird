@@ -1,0 +1,19 @@
+[Desktop Entry]
+Name=Superbird
+GenericName=Web Browser
+Comment=A modular browser built on Ladybird
+Exec=Superbird %U
+Icon=org.superbird.Superbird
+DBusActivatable=false
+Type=Application
+Categories=Network;WebBrowser;
+Keywords=Qt;Ladybird;
+StartupNotify=false
+StartupWMClass=org.superbird.Superbird
+MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+Actions=new-window;
+X-Purism-FormFactor=Workstation;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=Superbird --new-window
