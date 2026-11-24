@@ -26,3 +26,7 @@ Superbird is a version of the [Ladybird](https://github.com/LadybirdBrowser/lady
 - Named session snapshots and export
 - Vim mode and keyboard link hints
 - Per-site custom styles and command chains
+
+## Building
+
+See [DEVELOPING.md](DEVELOPING.md).

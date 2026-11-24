@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Fast checks before pushing (mirrors CI's "verify" job, takes a few seconds).
+# Skip with: git push --no-verify
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+
+# Refuse if upstream/ has patch commits that haven't been exported to patches/.
+up="$root/upstream"
+base_file="$(git -C "$up" rev-parse --absolute-git-dir 2>/dev/null)/superbird-base"
+if [[ -f "$base_file" ]] && git -C "$up" rev-parse -q --verify superbird >/dev/null; then
+    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+    git -C "$up" format-patch -q --zero-commit --no-signature --no-stat -N -o "$tmp" "$(cat "$base_file")..superbird"
+    if ! diff -q <(cat "$tmp"/*.patch 2>/dev/null | grep -v "^@@") <(cat "$root"/patches/*.patch 2>/dev/null | grep -v "^@@") >/dev/null; then
+        echo "pre-push: upstream/ has commits that differ from patches/." >&2
+        echo "  Run ./scripts/export-patches.sh and commit (or push anyway with --no-verify)." >&2
+        exit 1
+    fi
+fi
+
+echo "pre-push: running unit tests..."
+CXX="${CXX:-clang++}" "$root/scripts/test-unit.sh"
+if command -v node >/dev/null; then
+    node --check "$up/Base/res/ladybird/about-pages/settings/tabs.js"
+    node --check "$up/Base/res/ladybird/about-pages/settings/superbird.js"
+fi

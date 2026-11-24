@@ -113,4 +113,6 @@ if [[ ${#EXCLUDE_ENTRIES[@]} -gt 0 ]]; then
     } >> "$EXCLUDE_FILE"
 fi
 
+"$ROOT_DIR/scripts/ensure-applied.sh" --mark
+
 echo "[superbird] Done. Applied ${#PATCHES[@]} patch(es) and linked ${#EXCLUDE_ENTRIES[@]} overlay file(s)."

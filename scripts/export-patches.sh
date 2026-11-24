@@ -40,5 +40,7 @@ git -C "$UPSTREAM_DIR" format-patch \
     -o "$PATCHES_DIR" \
     "${BASE_SHA}..HEAD"
 
+"$ROOT_DIR/scripts/ensure-applied.sh" --mark
+
 echo "[superbird] Exported patches to $PATCHES_DIR:"
 ls -1 "$PATCHES_DIR"/*.patch 2>/dev/null || echo "  (none)"

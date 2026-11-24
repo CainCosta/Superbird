@@ -1,3 +1,8 @@
 [submodule "upstream"]
 	path = upstream
 	url = https://github.com/LadybirdBrowser/ladybird.git
+	shallow = true
+	# upstream/ is checked out on a local `superbird` branch with patches applied, so it is
+	# always "modified". Ignore it so `git add -A` / `commit -a` can never pin a local-only commit.
+	# To bump the pin on purpose:  git -c submodule.upstream.ignore=none add upstream
+	ignore = all

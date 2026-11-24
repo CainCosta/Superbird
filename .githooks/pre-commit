@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Refuse to commit an upstream/ submodule pin that points at a local Superbird patch
+# commit (those only exist on this machine, so CI and other clones couldn't check them out).
+# Legit pin bumps (from ./scripts/sync-upstream.sh + reset-upstream.sh) pass through.
+set -euo pipefail
+
+staged="$(git diff --cached --raw --abbrev=40 -- upstream | awk '{print $4}')"
+[[ -z "$staged" ]] && exit 0
+
+up="$(git rev-parse --show-toplevel)/upstream"
+base_file="$(git -C "$up" rev-parse --absolute-git-dir)/superbird-base"
+if [[ -f "$base_file" ]] && git -C "$up" rev-parse -q --verify superbird >/dev/null; then
+    if git -C "$up" rev-list "$(cat "$base_file")..superbird" | grep -qx "$staged"; then
+        echo "pre-commit: upstream/ is staged at ${staged:0:12}, a local patch commit." >&2
+        echo "  Patches belong in patches/ (./scripts/export-patches.sh), not in the submodule pin." >&2
+        echo "  Unstage it with:  git restore --staged upstream" >&2
+        exit 1
+    fi
+fi
