@@ -1,0 +1,234 @@
+name: Build Sidelady
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      build_macos:
+        description: "Build macOS arm64 bundle"
+        type: boolean
+        default: true
+      build_linux:
+        description: "Build Linux x86_64 bundle"
+        type: boolean
+        default: true
+
+jobs:
+  verify:
+    name: Verify Patches & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+
+      - name: Apply overlay and patches
+        run: |
+          git -C upstream config user.name "Sidelady CI"
+          git -C upstream config user.email "ci@sidelady.local"
+          ./scripts/apply.sh
+
+      - name: Run TreeTabModel C++23 unit tests
+        run: ./scripts/test-unit.sh
+
+      - name: Syntax-check settings/tabs.js
+        run: node --check upstream/Base/res/ladybird/about-pages/settings/tabs.js
+
+  build-macos:
+    name: Build macOS (arm64)
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' && inputs.build_macos || github.event_name == 'push'
+    runs-on: macos-15
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+
+      - name: Apply Sidelady overlay and patches
+        run: |
+          git -C upstream config user.name "Sidelady CI"
+          git -C upstream config user.email "ci@sidelady.local"
+          ./scripts/apply.sh
+
+      - name: Select latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install build dependencies
+        run: |
+          brew unlink openssl@3 || true
+          brew install \
+            autoconf \
+            autoconf-archive \
+            automake \
+            bash \
+            ccache \
+            coreutils \
+            libtool \
+            nasm \
+            ninja \
+            pkg-config \
+            sccache \
+            unzip
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Warm up pinned Rust toolchain
+        working-directory: upstream
+        run: |
+          rustup toolchain install
+          cargo --version
+          rustc --version
+
+      - name: Set up Python environment
+        working-directory: upstream
+        run: |
+          python_bin=$(python3 Meta/Utils/python_environment.py --print-bin | tr -d '\r')
+          echo "${python_bin}" >> "$GITHUB_PATH"
+          echo "pythonLocation=$(dirname "${python_bin}")" >> "$GITHUB_ENV"
+
+      - name: Restore caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            upstream/.ccache
+            upstream/.sccache
+            upstream/Build/caches/vcpkg-binary-cache
+            ~/.cargo/registry
+          key: macos-arm64-${{ hashFiles('upstream/vcpkg.json', 'upstream/Cargo.lock') }}
+          restore-keys: |
+            macos-arm64-
+
+      - name: Configure and build Sidelady (macOS)
+        working-directory: upstream
+        env:
+          LADYBIRD_SOURCE_DIR: ${{ github.workspace }}/upstream
+          CCACHE_DIR: ${{ github.workspace }}/upstream/.ccache
+          CCACHE_COMPILERCHECK: "%compiler% -v"
+          SCCACHE_DIR: ${{ github.workspace }}/upstream/.sccache
+          SCCACHE_CACHE_SIZE: 2G
+          SCCACHE_IDLE_TIMEOUT: "0"
+        run: |
+          HOST_CC="$(xcrun --find clang)"
+          HOST_CXX="$(xcrun --find clang++)"
+          export CC="$HOST_CC"
+          export CXX="$HOST_CXX"
+          ccache -M 4G
+
+          cmake --preset Distribution -B Build \
+            -DLADYBIRD_BASELINE_CPU_TARGET=ON \
+            -DLADYBIRD_ENABLE_UPDATE_CHECK=OFF \
+            -DLADYBIRD_ENABLE_SPARKLE=OFF \
+            -DBUILD_TESTING=OFF \
+            -DPython3_EXECUTABLE="${pythonLocation}/bin/python" \
+            -DCMAKE_C_COMPILER="$HOST_CC" \
+            -DCMAKE_CXX_COMPILER="$HOST_CXX"
+
+          cmake --build Build --target sign_ladybird_bundle
+          ccache -s
+
+      - name: Package macOS app bundle
+        working-directory: upstream/Build
+        run: |
+          mkdir -p packages
+          APP_PATH="$(find . -maxdepth 4 -name 'Ladybird.app' -type d | head -n 1)"
+          if [[ -z "$APP_PATH" ]]; then
+            echo "Error: Ladybird.app not found!" >&2
+            exit 1
+          fi
+          echo "Packaging $APP_PATH..."
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" packages/Sidelady-macOS-arm64.zip
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sidelady-macOS-arm64
+          path: upstream/Build/packages/Sidelady-macOS-arm64.zip
+          if-no-files-found: error
+
+  build-linux:
+    name: Build Linux (x86_64)
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' && inputs.build_linux || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ladybirdbrowser/ladybird-ci:2026.11.21
+      options: --ulimit core=1
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+
+      - name: Apply Sidelady overlay and patches
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}/upstream"
+          git -C upstream config user.name "Sidelady CI"
+          git -C upstream config user.email "ci@sidelady.local"
+          ./scripts/apply.sh
+
+      - name: Set up Python environment
+        working-directory: upstream
+        run: |
+          python_bin=$(python3 Meta/Utils/python_environment.py --print-bin | tr -d '\r')
+          echo "${python_bin}" >> "$GITHUB_PATH"
+          echo "pythonLocation=$(dirname "${python_bin}")" >> "$GITHUB_ENV"
+
+      - name: Restore caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            upstream/.ccache
+            upstream/.sccache
+            upstream/Build/caches/vcpkg-binary-cache
+            ~/.cargo/registry
+            /opt/cargo/registry
+          key: linux-x86_64-${{ hashFiles('upstream/vcpkg.json', 'upstream/Cargo.lock') }}
+          restore-keys: |
+            linux-x86_64-
+
+      - name: Configure and build Sidelady (Linux)
+        working-directory: upstream
+        env:
+          LADYBIRD_SOURCE_DIR: ${{ github.workspace }}/upstream
+          CCACHE_DIR: ${{ github.workspace }}/upstream/.ccache
+          CCACHE_COMPILERCHECK: "%compiler% -v"
+          SCCACHE_DIR: ${{ github.workspace }}/upstream/.sccache
+          SCCACHE_CACHE_SIZE: 2G
+          SCCACHE_IDLE_TIMEOUT: "0"
+          CC: clang
+          CXX: clang++
+        run: |
+          ccache -M 4G
+          cmake --preset Distribution -B Build \
+            -DLADYBIRD_BASELINE_CPU_TARGET=ON \
+            -DLADYBIRD_ENABLE_UPDATE_CHECK=OFF \
+            -DBUILD_TESTING=OFF \
+            -DPython3_EXECUTABLE="${pythonLocation}/bin/python" \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++
+
+          cmake --build Build --target ladybird
+          cmake --install Build --strip --prefix "${GITHUB_WORKSPACE}/Install"
+          ccache -s
+
+      - name: Package Linux archive
+        run: |
+          mkdir -p packages
+          tar -C "${GITHUB_WORKSPACE}/Install" -cJf packages/Sidelady-Linux-x86_64.tar.xz .
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sidelady-Linux-x86_64
+          path: packages/Sidelady-Linux-x86_64.tar.xz
+          if-no-files-found: error

@@ -1,0 +1,23 @@
+name: Upstream Sync Check
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Every Monday at 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  check-patches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Sidelady
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+
+      - name: Fetch latest Ladybird master & test patch stack
+        run: |
+          git -C upstream config user.name "Sidelady CI"
+          git -C upstream config user.email "ci@sidelady.local"
+          ./scripts/sync-upstream.sh
+          git -C upstream diff --stat "$(cat "$(git -C upstream rev-parse --git-dir)/sidelady-base")..HEAD"

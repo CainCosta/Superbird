@@ -1,0 +1,8 @@
+Build/
+build/
+.cache/
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store

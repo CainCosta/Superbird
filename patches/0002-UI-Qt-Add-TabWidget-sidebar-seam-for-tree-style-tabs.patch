@@ -1,0 +1,104 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sidelady <sidelady@local>
+Date: Mon, 23 Nov 2026 22:09:48 -0600
+Subject: [PATCH] UI/Qt: Add TabWidget sidebar seam for tree-style tabs
+
+
+diff --git a/UI/Qt/TabBar.cpp b/UI/Qt/TabBar.cpp
+index 4b6ee134..468e3dd4 100644
+--- a/UI/Qt/TabBar.cpp
++++ b/UI/Qt/TabBar.cpp
+@@ -3624,6 +3624,26 @@ void TabWidget::set_vertical_tabs_enabled(bool enabled)
+     rebuild_layout();
+ }
+ 
++void TabWidget::set_tree_tabs_widget(QWidget* widget)
++{
++    m_tree_tabs_widget = widget;
++    if (m_tree_tabs_widget) {
++        m_tree_tabs_widget->setParent(m_vertical_tab_bar_column);
++        m_tree_tabs_widget->hide();
++    }
++    if (m_vertical_tabs_enabled && m_tree_tabs_enabled)
++        rebuild_layout();
++}
++
++void TabWidget::set_tree_tabs_enabled(bool enabled)
++{
++    if (m_tree_tabs_enabled == enabled)
++        return;
++    m_tree_tabs_enabled = enabled;
++    if (m_vertical_tabs_enabled)
++        rebuild_layout();
++}
++
+ void TabWidget::set_everything_in_sidebar(bool everything_in_sidebar)
+ {
+     if (m_everything_in_sidebar == everything_in_sidebar)
+@@ -4567,6 +4587,9 @@ void TabWidget::rebuild_layout_for_horizontal_tabs()
+     if (window_controls_on_left())
+         m_tab_bar_row_layout->addWidget(m_window_controls, 0, use_native_macos_window_controls() ? Qt::AlignVCenter : Qt::AlignTop);
+     add_ladybird_buttons();
++    if (m_tree_tabs_widget)
++        m_tree_tabs_widget->hide();
++    m_tab_bar->show();
+     m_tab_bar_row_layout->addWidget(m_tab_bar, 0, Qt::AlignBottom);
+     m_tab_bar_row_layout->addSpacing(new_tab_button_room);
+     m_tab_bar_row_layout->addStretch(1);
+@@ -4973,9 +4996,20 @@ void TabWidget::rebuild_layout_for_vertical_tabs()
+         delete top_row_layout;
+     }
+ 
+-    m_vertical_tab_bar_column_layout->addWidget(m_tab_bar);
+-    m_vertical_tab_bar_column_layout->addWidget(m_new_tab_button, 0, vertical_tabs_are_on_right() ? Qt::AlignRight : Qt::AlignLeft);
+-    m_vertical_tab_bar_column_layout->addStretch(1);
++    if (m_tree_tabs_widget && m_tree_tabs_enabled) {
++        m_tab_bar->hide();
++        m_tree_tabs_widget->setParent(m_vertical_tab_bar_column);
++        m_tree_tabs_widget->show();
++        m_vertical_tab_bar_column_layout->addWidget(m_tree_tabs_widget, 1);
++        m_vertical_tab_bar_column_layout->addWidget(m_new_tab_button, 0, vertical_tabs_are_on_right() ? Qt::AlignRight : Qt::AlignLeft);
++    } else {
++        if (m_tree_tabs_widget)
++            m_tree_tabs_widget->hide();
++        m_tab_bar->show();
++        m_vertical_tab_bar_column_layout->addWidget(m_tab_bar);
++        m_vertical_tab_bar_column_layout->addWidget(m_new_tab_button, 0, vertical_tabs_are_on_right() ? Qt::AlignRight : Qt::AlignLeft);
++        m_vertical_tab_bar_column_layout->addStretch(1);
++    }
+ 
+     // The toolbar's other buttons sit at the bottom of the sidebar that holds it.
+     if (m_vertical_tabs_expanded && toolbar_is_in_sidebar() && !toggle_moves_toolbar()) {
+@@ -5279,6 +5313,8 @@ void TabWidget::update_tab_layout()
+         update_vertical_tabs_overlay_geometry();
+         m_vertical_tabs_content_layout->activate();
+         m_tab_bar->set_available_width(vertical_tabs_tab_width());
++        if (on_tree_tabs_rail_changed)
++            on_tree_tabs_rail_changed(!vertical_tabs_effectively_expanded());
+         update_vertical_tabs_resize_handle();
+         update_vertical_tabs_content_separator();
+         return;
+diff --git a/UI/Qt/TabBar.h b/UI/Qt/TabBar.h
+index b525ca92..434ed5b8 100644
+--- a/UI/Qt/TabBar.h
++++ b/UI/Qt/TabBar.h
+@@ -349,6 +349,10 @@ public:
+     void window_control_buttons_changed();
+     void update_window_button_icons();
+     void set_vertical_tabs_enabled(bool);
++    void set_tree_tabs_widget(QWidget*);
++    void set_tree_tabs_enabled(bool);
++    bool tree_tabs_enabled() const { return m_tree_tabs_enabled; }
++    Function<void(bool collapsed_rail)> on_tree_tabs_rail_changed;
+     void set_everything_in_sidebar(bool);
+     void set_vertical_tabs_expanded(bool);
+     void set_vertical_tabs_expand_on_hover(bool);
+@@ -449,6 +453,8 @@ private:
+     void accept_tab_drop(QDropEvent*, int index);
+ 
+     TabBar* m_tab_bar { nullptr };
++    QWidget* m_tree_tabs_widget { nullptr };
++    bool m_tree_tabs_enabled { false };
+     void size_hidden_pages_like_the_current_one();
+ 
+     QStackedWidget* m_stacked_widget { nullptr };
