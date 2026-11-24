@@ -37,7 +37,7 @@ public:
     AK_ALLOC_WITH_KMALLOC;
 
     explicit TreeTabView(TreeTabController& controller, QWidget* parent = nullptr);
-    virtual ~TreeTabView() override = default;
+    virtual ~TreeTabView() override;
 
     void rebuild_rows();
     void update_chrome_style();

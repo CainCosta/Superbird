@@ -44,6 +44,11 @@ TreeTabController::~TreeTabController()
     }
 }
 
+TreeTabView* TreeTabController::view() const
+{
+    return m_view;
+}
+
 bool TreeTabController::is_enabled() const
 {
     auto const& settings = Application::settings().tab_settings();

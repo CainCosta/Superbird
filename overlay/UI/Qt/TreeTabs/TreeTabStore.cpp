@@ -41,6 +41,7 @@ ErrorOr<NonnullOwnPtr<TreeTabStore>> TreeTabStore::create(ByteString const& data
                 CREATE INDEX IF NOT EXISTS idx_tree_tab_nodes_window
                     ON TreeTabNodes(session_window_id);
             )#",
+            .backfill = {},
         },
     });
 

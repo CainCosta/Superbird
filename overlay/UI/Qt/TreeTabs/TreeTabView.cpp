@@ -22,6 +22,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPen>
 #include <QScrollBar>
 #include <QTimer>
 #include <QToolTip>
@@ -80,6 +81,8 @@ TreeTabView::TreeTabView(TreeTabController& controller, QWidget* parent)
 
     update_chrome_style();
 }
+
+TreeTabView::~TreeTabView() = default;
 
 void TreeTabView::rebuild_rows()
 {
@@ -566,7 +569,7 @@ void TreeTabView::paint_drop_indicator(QPainter& painter, int pinned_height)
         return;
     }
 
-    auto visual_depth = min(row.depth + ((m_drop_position == TreeDropPosition::Below && row.has_children && !row.collapsed) ? 1 : 0), TREE_MAX_VISUAL_DEPTH);
+    auto visual_depth = min(row.depth + ((m_drop_position == TreeDropPosition::Below && row.has_children && !row.collapsed) ? 1uz : 0uz), TREE_MAX_VISUAL_DEPTH);
     int line_left = rect.left() + 8 + static_cast<int>(visual_depth) * TREE_INDENT_PER_LEVEL;
     int line_y = (m_drop_position == TreeDropPosition::Above) ? rect.top() : (rect.bottom() + 1);
 

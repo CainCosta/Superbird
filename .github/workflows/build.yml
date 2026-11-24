@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths-ignore:
+      - "**/*.md"
   workflow_dispatch:
     inputs:
       build_macos:
@@ -63,6 +65,9 @@ jobs:
 
       - name: Install build dependencies
         shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: |
           brew unlink openssl@3 || true
           brew install \
@@ -98,17 +103,34 @@ jobs:
           echo "${python_bin}" >> "$GITHUB_PATH"
           echo "pythonLocation=$(dirname "${python_bin}")" >> "$GITHUB_ENV"
 
-      - name: Restore caches
-        uses: actions/cache@v4
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: upstream/Build/caches/vcpkg-binary-cache
+          key: vcpkg-macos-arm64-${{ hashFiles('upstream/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-macos-arm64-
+
+      - name: Restore Cargo registry cache
+        id: cargo-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cargo/registry
+          key: cargo-macos-arm64-${{ hashFiles('upstream/Cargo.lock') }}
+          restore-keys: |
+            cargo-macos-arm64-
+
+      - name: Restore compiler caches (ccache + sccache)
+        id: compiler-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             upstream/.ccache
             upstream/.sccache
-            upstream/Build/caches/vcpkg-binary-cache
-            ~/.cargo/registry
-          key: macos-arm64-${{ hashFiles('upstream/vcpkg.json', 'upstream/Cargo.lock') }}
+          key: compiler-macos-arm64-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            macos-arm64-
+            compiler-macos-arm64-
 
       - name: Bootstrap vcpkg
         working-directory: upstream
@@ -116,12 +138,12 @@ jobs:
         run: |
           python3 -c 'import pathlib, sys; sys.path.insert(0, "Meta"); from Utils.build_vcpkg import build_vcpkg; build_vcpkg(pathlib.Path("Build/vcpkg-distribution").resolve())'
 
-      - name: Configure and build Sidelady (macOS)
+      - name: Configure Sidelady & build vcpkg dependencies (macOS)
         working-directory: upstream
         shell: bash
         env:
           CCACHE_COMPILERCHECK: "%compiler% -v"
-          SCCACHE_CACHE_SIZE: 2G
+          SCCACHE_CACHE_SIZE: 1G
           SCCACHE_IDLE_TIMEOUT: "0"
         run: |
           export LADYBIRD_SOURCE_DIR="$PWD"
@@ -133,10 +155,12 @@ jobs:
           HOST_CXX="$(xcrun --find clang++)"
           export CC="$HOST_CC"
           export CXX="$HOST_CXX"
-          ccache -M 4G
+          ccache -M 2G
 
           cmake --preset Distribution -B Build \
             -DLADYBIRD_BASELINE_CPU_TARGET=ON \
+            -DLADYBIRD_ENABLE_LTO=OFF \
+            -DLADYBIRD_GENERATE_SYMBOL_FILES=OFF \
             -DLADYBIRD_ENABLE_UPDATE_CHECK=OFF \
             -DLADYBIRD_ENABLE_SPARKLE=OFF \
             -DBUILD_TESTING=OFF \
@@ -144,8 +168,63 @@ jobs:
             -DCMAKE_C_COMPILER="$HOST_CC" \
             -DCMAKE_CXX_COMPILER="$HOST_CXX"
 
+      - name: Save vcpkg binary cache immediately
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: upstream/Build/caches/vcpkg-binary-cache
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+
+      - name: Build UI layer first (fail-fast on TreeTabs/Qt)
+        working-directory: upstream
+        shell: bash
+        env:
+          CCACHE_COMPILERCHECK: "%compiler% -v"
+          SCCACHE_CACHE_SIZE: 1G
+          SCCACHE_IDLE_TIMEOUT: "0"
+        run: |
+          export CCACHE_DIR="$PWD/.ccache"
+          export SCCACHE_DIR="$PWD/.sccache"
+          cmake --build Build --target ladybird_impl
+
+      - name: Build full macOS bundle
+        working-directory: upstream
+        shell: bash
+        env:
+          CCACHE_COMPILERCHECK: "%compiler% -v"
+          SCCACHE_CACHE_SIZE: 1G
+          SCCACHE_IDLE_TIMEOUT: "0"
+        run: |
+          export CCACHE_DIR="$PWD/.ccache"
+          export SCCACHE_DIR="$PWD/.sccache"
           cmake --build Build --target sign_ladybird_bundle
           ccache -s
+
+      - name: Stop sccache & prune ccache before saving
+        if: always()
+        working-directory: upstream
+        shell: bash
+        run: |
+          export CCACHE_DIR="$PWD/.ccache"
+          sccache --stop-server || true
+          ccache --evict-older-than=1d || true
+          ccache -s || true
+
+      - name: Save Cargo registry cache
+        if: always() && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+
+      - name: Save compiler caches (ccache + sccache)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            upstream/.ccache
+            upstream/.sccache
+          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
 
       - name: Package macOS app bundle
         working-directory: upstream/Build
@@ -199,18 +278,36 @@ jobs:
           echo "${python_bin}" >> "$GITHUB_PATH"
           echo "pythonLocation=$(dirname "${python_bin}")" >> "$GITHUB_ENV"
 
-      - name: Restore caches
-        uses: actions/cache@v4
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: upstream/Build/caches/vcpkg-binary-cache
+          key: vcpkg-linux-x86_64-${{ hashFiles('upstream/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-linux-x86_64-
+
+      - name: Restore Cargo registry cache
+        id: cargo-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            /opt/cargo/registry
+          key: cargo-linux-x86_64-${{ hashFiles('upstream/Cargo.lock') }}
+          restore-keys: |
+            cargo-linux-x86_64-
+
+      - name: Restore compiler caches (ccache + sccache)
+        id: compiler-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             upstream/.ccache
             upstream/.sccache
-            upstream/Build/caches/vcpkg-binary-cache
-            ~/.cargo/registry
-            /opt/cargo/registry
-          key: linux-x86_64-${{ hashFiles('upstream/vcpkg.json', 'upstream/Cargo.lock') }}
+          key: compiler-linux-x86_64-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            linux-x86_64-
+            compiler-linux-x86_64-
 
       - name: Bootstrap vcpkg
         working-directory: upstream
@@ -218,12 +315,12 @@ jobs:
         run: |
           python3 -c 'import pathlib, sys; sys.path.insert(0, "Meta"); from Utils.build_vcpkg import build_vcpkg; build_vcpkg(pathlib.Path("Build/vcpkg-distribution").resolve())'
 
-      - name: Configure and build Sidelady (Linux)
+      - name: Configure Sidelady & build vcpkg dependencies (Linux)
         working-directory: upstream
         shell: bash
         env:
           CCACHE_COMPILERCHECK: "%compiler% -v"
-          SCCACHE_CACHE_SIZE: 2G
+          SCCACHE_CACHE_SIZE: 1G
           SCCACHE_IDLE_TIMEOUT: "0"
           CC: clang
           CXX: clang++
@@ -233,19 +330,78 @@ jobs:
           export VCPKG_ROOT="$PWD/Build/vcpkg-distribution"
           export CCACHE_DIR="$PWD/.ccache"
           export SCCACHE_DIR="$PWD/.sccache"
-          ccache -M 4G
+          ccache -M 2G
 
           cmake --preset Distribution -B Build \
             -DLADYBIRD_BASELINE_CPU_TARGET=ON \
+            -DLADYBIRD_ENABLE_LTO=OFF \
+            -DLADYBIRD_GENERATE_SYMBOL_FILES=OFF \
             -DLADYBIRD_ENABLE_UPDATE_CHECK=OFF \
             -DBUILD_TESTING=OFF \
             -DPython3_EXECUTABLE="${pythonLocation}/bin/python" \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++
 
+      - name: Save vcpkg binary cache immediately
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: upstream/Build/caches/vcpkg-binary-cache
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+
+      - name: Build UI layer first (fail-fast on TreeTabs/Qt)
+        working-directory: upstream
+        shell: bash
+        env:
+          CCACHE_COMPILERCHECK: "%compiler% -v"
+          SCCACHE_CACHE_SIZE: 1G
+          SCCACHE_IDLE_TIMEOUT: "0"
+        run: |
+          export CCACHE_DIR="$PWD/.ccache"
+          export SCCACHE_DIR="$PWD/.sccache"
+          cmake --build Build --target ladybird_impl
+
+      - name: Build full Linux bundle
+        working-directory: upstream
+        shell: bash
+        env:
+          CCACHE_COMPILERCHECK: "%compiler% -v"
+          SCCACHE_CACHE_SIZE: 1G
+          SCCACHE_IDLE_TIMEOUT: "0"
+        run: |
+          export CCACHE_DIR="$PWD/.ccache"
+          export SCCACHE_DIR="$PWD/.sccache"
           cmake --build Build --target ladybird
           cmake --install Build --strip --prefix "$PWD/../Install"
           ccache -s
+
+      - name: Stop sccache & prune ccache before saving
+        if: always()
+        working-directory: upstream
+        shell: bash
+        run: |
+          export CCACHE_DIR="$PWD/.ccache"
+          sccache --stop-server || true
+          ccache --evict-older-than=1d || true
+          ccache -s || true
+
+      - name: Save Cargo registry cache
+        if: always() && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            /opt/cargo/registry
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+
+      - name: Save compiler caches (ccache + sccache)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            upstream/.ccache
+            upstream/.sccache
+          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
 
       - name: Package Linux archive
         shell: bash

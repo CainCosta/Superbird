@@ -35,7 +35,7 @@ public:
     explicit TreeTabController(BrowserWindow& window);
     virtual ~TreeTabController() override;
 
-    TreeTabView* view() const { return m_view; }
+    TreeTabView* view() const;
     TreeTabModel const& model() const { return m_model; }
     BrowserWindow& window() const { return m_window; }
 
