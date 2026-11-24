@@ -10,6 +10,20 @@ if [[ "$(git -C "$UPSTREAM_DIR" rev-parse --abbrev-ref HEAD)" != "sidelady" ]]; 
     "$ROOT_DIR/scripts/apply.sh"
 fi
 
+case "${PRESET,,}" in
+    distribution|fuzzers) VCPKG_TYPE="distribution" ;;
+    debug|all_debug)      VCPKG_TYPE="debug" ;;
+    sanitizer)            VCPKG_TYPE="sanitizer" ;;
+    *)                    VCPKG_TYPE="release" ;;
+esac
+
+export LADYBIRD_SOURCE_DIR="$UPSTREAM_DIR"
+export LADYBIRD_MAIN_SOURCE_DIR="$UPSTREAM_DIR"
+export VCPKG_ROOT="$UPSTREAM_DIR/Build/vcpkg-${VCPKG_TYPE}"
+
+echo "[sidelady] Ensuring vcpkg (${VCPKG_TYPE}) is bootstrapped..."
+(cd "$UPSTREAM_DIR" && python3 -c "import pathlib, sys; sys.path.insert(0, 'Meta'); from Utils.build_vcpkg import build_vcpkg; build_vcpkg(pathlib.Path('$VCPKG_ROOT').resolve())")
+
 echo "[sidelady] Configuring Ladybird ($PRESET)..."
 cmake -S "$UPSTREAM_DIR" \
     --preset "$PRESET" \
