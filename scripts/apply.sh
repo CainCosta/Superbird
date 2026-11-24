@@ -16,8 +16,8 @@ if [[ "$UPSTREAM_GIT_DIR" != /* ]]; then
     UPSTREAM_GIT_DIR="$UPSTREAM_DIR/$UPSTREAM_GIT_DIR"
 fi
 
-BASE_FILE="$UPSTREAM_GIT_DIR/sidelady-base"
-MANIFEST_FILE="$UPSTREAM_GIT_DIR/sidelady-overlay-manifest"
+BASE_FILE="$UPSTREAM_GIT_DIR/superbird-base"
+MANIFEST_FILE="$UPSTREAM_GIT_DIR/superbird-overlay-manifest"
 EXCLUDE_FILE="$UPSTREAM_GIT_DIR/info/exclude"
 
 # Determine the pinned submodule commit from the superproject (fallback to current HEAD if untracked yet)
@@ -31,15 +31,15 @@ if [[ -z "$PINNED_SHA" ]]; then
 fi
 
 # Allow overriding base commit (used by sync-upstream.sh)
-BASE_SHA="${SIDELADY_BASE_SHA:-$PINNED_SHA}"
+BASE_SHA="${SUPERBIRD_BASE_SHA:-$PINNED_SHA}"
 
-echo "[sidelady] Resetting upstream/ to base commit ${BASE_SHA:0:12}..."
+echo "[superbird] Resetting upstream/ to base commit ${BASE_SHA:0:12}..."
 "$ROOT_DIR/scripts/reset-upstream.sh" "$BASE_SHA"
 
 echo "$BASE_SHA" > "$BASE_FILE"
 
-# Create/reset local sidelady branch at BASE_SHA
-git -C "$UPSTREAM_DIR" checkout -q -B sidelady "$BASE_SHA"
+# Create/reset local superbird branch at BASE_SHA
+git -C "$UPSTREAM_DIR" checkout -q -B superbird "$BASE_SHA"
 
 # Apply patches in sorted order
 shopt -s nullglob
@@ -48,10 +48,10 @@ shopt -u nullglob
 
 if [[ ${#PATCHES[@]} -gt 0 ]]; then
     for patch in "${PATCHES[@]}"; do
-        echo "[sidelady] Applying $(basename "$patch")..."
+        echo "[superbird] Applying $(basename "$patch")..."
         if ! git -C "$UPSTREAM_DIR" am --3way --keep-cr "$patch"; then
             echo "" >&2
-            echo "[sidelady] Patch failed: $(basename "$patch")" >&2
+            echo "[superbird] Patch failed: $(basename "$patch")" >&2
             echo "  Resolve conflicts in $UPSTREAM_DIR, then run:" >&2
             echo "    git -C upstream am --continue" >&2
             echo "    ./scripts/export-patches.sh" >&2
@@ -59,14 +59,14 @@ if [[ ${#PATCHES[@]} -gt 0 ]]; then
         fi
     done
 else
-    echo "[sidelady] No patches in patches/ yet."
+    echo "[superbird] No patches in patches/ yet."
 fi
 
 # Link overlay directories/files into upstream/ and register them in upstream/.git/info/exclude
 mkdir -p "$(dirname "$EXCLUDE_FILE")"
 touch "$EXCLUDE_FILE"
 
-# Strip any previous managed exclude block
+# Strip any previous managed exclude block (including legacy sidelady blocks)
 python3 - "$EXCLUDE_FILE" <<'PY'
 import sys
 path = sys.argv[1]
@@ -75,10 +75,11 @@ with open(path, "r", encoding="utf-8") as f:
 out = []
 skip = False
 for line in lines:
-    if line.strip() == "# BEGIN SIDELADY OVERLAY":
+    stripped = line.strip()
+    if stripped in ("# BEGIN SUPERBIRD OVERLAY", "# BEGIN SIDELADY OVERLAY"):
         skip = True
         continue
-    if line.strip() == "# END SIDELADY OVERLAY":
+    if stripped in ("# END SUPERBIRD OVERLAY", "# END SIDELADY OVERLAY"):
         skip = False
         continue
     if not skip:
@@ -106,10 +107,10 @@ fi
 
 if [[ ${#EXCLUDE_ENTRIES[@]} -gt 0 ]]; then
     {
-        echo "# BEGIN SIDELADY OVERLAY"
+        echo "# BEGIN SUPERBIRD OVERLAY"
         printf '%s\n' "${EXCLUDE_ENTRIES[@]}"
-        echo "# END SIDELADY OVERLAY"
+        echo "# END SUPERBIRD OVERLAY"
     } >> "$EXCLUDE_FILE"
 fi
 
-echo "[sidelady] Done. Applied ${#PATCHES[@]} patch(es) and linked ${#EXCLUDE_ENTRIES[@]} overlay file(s)."
+echo "[superbird] Done. Applied ${#PATCHES[@]} patch(es) and linked ${#EXCLUDE_ENTRIES[@]} overlay file(s)."

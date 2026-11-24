@@ -6,7 +6,7 @@
 
 #include <cstdio>
 #include <AK/Vector.h>
-#include <UI/Qt/TreeTabs/TreeTabModel.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabModel.h>
 
 #include <cstdlib>
 

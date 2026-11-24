@@ -1,27 +1,29 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Sidelady <sidelady@local>
-Date: Mon, 23 Nov 2026 22:12:45 -0600
-Subject: [PATCH] UI/Qt: Wire TreeTabController lifecycle hooks and context
- menu actions
+From: Superbird <superbird@local>
+Date: Tue, 24 Nov 2026 12:28:31 -0600
+Subject: [PATCH] UI/Qt: Wire Superbird::WindowHost and TreeTabStore seams
 
 
 diff --git a/UI/Qt/Application.cpp b/UI/Qt/Application.cpp
-index 5207cd38..b3467e14 100644
+index 2d5b764d..c0c88abc 100644
 --- a/UI/Qt/Application.cpp
 +++ b/UI/Qt/Application.cpp
-@@ -63,6 +63,8 @@
- #include <UI/Qt/EventLoopImplementationQt.h>
- #include <UI/Qt/ExternalURLHandler.h>
- #include <UI/Qt/HistoryPage.h>
-+#include <UI/Qt/TreeTabs/TreeTabController.h>
-+#include <UI/Qt/TreeTabs/TreeTabStore.h>
- #include <UI/Qt/Menu.h>
- #include <UI/Qt/PageCard.h>
- #include <UI/Qt/PictureInPictureWindow.h>
-@@ -1558,6 +1560,17 @@ void Application::create_session_store(ByteString const& data_directory, bool pe
+@@ -71,6 +71,10 @@
+ #include <UI/Qt/RemoteDownloads.h>
+ #include <UI/Qt/SessionStore.h>
+ #include <UI/Qt/StringUtils.h>
++#include <UI/Qt/Superbird/Core/WindowHost.h>
++#if defined(SUPERBIRD_MODULE_TREE_TABS)
++#    include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabStore.h>
++#endif
+ #include <UI/Qt/Tab.h>
+ #include <UI/Qt/Theme.h>
+ #include <UI/Qt/VersionPage.h>
+@@ -1558,6 +1562,19 @@ void Application::create_session_store(ByteString const& data_directory, bool pe
          on_recently_closed_entries_changed();
      };
  
++#if defined(SUPERBIRD_MODULE_TREE_TABS)
 +    if (persists_sessions) {
 +        if (auto tree_store = TreeTabStore::create(data_directory); !tree_store.is_error()) {
 +            m_tree_tab_store = tree_store.release_value();
@@ -32,14 +34,16 @@ index 5207cd38..b3467e14 100644
 +    } else {
 +        m_tree_tab_store = TreeTabStore::create_transient();
 +    }
++#endif
 +
  #if !defined(AK_OS_WINDOWS) && defined(LADYBIRD_HUB_IN_OWN_PROCESS)
      // A run stopped by SIGINT or SIGTERM ends like a quit, rather than like a crash: It saves the session, leaves its
      // windows for the next launch to recover, and records a clean exit. The Hub hears of a signal sent to it alone, and
-@@ -1668,6 +1681,19 @@ SessionStore& Application::session_store(WebView::IsPrivate is_private)
+@@ -1668,6 +1685,21 @@ SessionStore& Application::session_store(WebView::IsPrivate is_private)
      return *s_the->m_private_session_store;
  }
  
++#if defined(SUPERBIRD_MODULE_TREE_TABS)
 +TreeTabStore& Application::tree_tab_store(WebView::IsPrivate is_private)
 +{
 +    if (is_private == WebView::IsPrivate::No) {
@@ -52,11 +56,12 @@ index 5207cd38..b3467e14 100644
 +        s_the->m_private_tree_tab_store = TreeTabStore::create_transient();
 +    return *s_the->m_private_tree_tab_store;
 +}
++#endif
 +
  void Application::did_clear_history_since(UnixDateTime since)
  {
      m_history_store->remove_entries_accessed_since(since);
-@@ -2400,10 +2426,15 @@ BrowserWindow* Application::window_for_new_tab(Optional<u64> source_view_id, Web
+@@ -2400,10 +2432,15 @@ BrowserWindow* Application::window_for_new_tab(Optional<u64> source_view_id, Web
  
  void Application::open_view_in_new_tab(u64 view_id, Optional<u64> source_view_id, WebView::IsPrivate is_private, Web::HTML::ActivateTab activate_tab)
  {
@@ -64,7 +69,7 @@ index 5207cd38..b3467e14 100644
 +    if (auto* window = window_for_new_tab(source_view_id, is_private)) {
 +        if (source_view_id.has_value()) {
 +            if (auto* source_view = RemoteView::find(*source_view_id))
-+                window->tree_tab_controller().set_pending_opener(window->tab_for_view(*source_view));
++                window->superbird().on_pending_opener(window->tab_for_view(*source_view));
 +        }
          window->create_new_tab(activate_tab, view_id);
 -    else
@@ -74,190 +79,172 @@ index 5207cd38..b3467e14 100644
  }
  
  void Application::open_url_in_new_tab(URL::URL const& url, Web::HTML::ActivateTab activate_tab, Optional<u64> source_view_id, WebView::IsPrivate is_private) const
-@@ -2414,6 +2445,10 @@ void Application::open_url_in_new_tab(URL::URL const& url, Web::HTML::ActivateTa
+@@ -2414,6 +2451,10 @@ void Application::open_url_in_new_tab(URL::URL const& url, Web::HTML::ActivateTa
          return;
      }
  
 +    if (source_view_id.has_value()) {
 +        if (auto* source_view = RemoteView::find(*source_view_id))
-+            window->tree_tab_controller().set_pending_opener(window->tab_for_view(*source_view));
++            window->superbird().on_pending_opener(window->tab_for_view(*source_view));
 +    }
      window->new_tab_from_url(url, activate_tab, BrowserWindow::TabLocation::after_current_tab());
  }
  
-@@ -2457,6 +2492,10 @@ void Application::open_navigation_in_new_tab(Web::HTML::PreparedNavigationDescri
+@@ -2457,6 +2498,10 @@ void Application::open_navigation_in_new_tab(Web::HTML::PreparedNavigationDescri
          return;
      }
  
 +    if (source_view_id.has_value()) {
 +        if (auto* source_view = RemoteView::find(*source_view_id))
-+            window->tree_tab_controller().set_pending_opener(window->tab_for_view(*source_view));
++            window->superbird().on_pending_opener(window->tab_for_view(*source_view));
 +    }
      auto& tab = window->create_new_tab(activate_tab, BrowserWindow::TabLocation::after_current_tab());
      tab.view().load(move(navigation));
  }
 diff --git a/UI/Qt/Application.h b/UI/Qt/Application.h
-index 8e51f703..c2dd4e88 100644
+index 8e51f703..3e738704 100644
 --- a/UI/Qt/Application.h
 +++ b/UI/Qt/Application.h
-@@ -42,6 +42,7 @@ class Bookmarks;
+@@ -42,6 +42,9 @@ class Bookmarks;
  class CompositorLayersWindow;
  class ProcessManagerWindow;
  class SoftwareUpdater;
++#if defined(SUPERBIRD_MODULE_TREE_TABS)
 +class TreeTabStore;
++#endif
  class WebContentView;
  
  struct WindowConfiguration {
-@@ -107,6 +108,7 @@ public:
+@@ -107,6 +110,9 @@ public:
  
      // The windows and tabs of each kind of window, which this run keeps for the next one unless they are private.
      static SessionStore& session_store(WebView::IsPrivate);
++#if defined(SUPERBIRD_MODULE_TREE_TABS)
 +    static TreeTabStore& tree_tab_store(WebView::IsPrivate);
++#endif
  
      // Browsing history and the favicons it, the bookmarks and the open tabs show. Private windows keep no history.
      static WebView::HistoryStore& history_store() { return *s_the->m_history_store; }
-@@ -371,6 +373,8 @@ private:
+@@ -371,6 +377,10 @@ private:
  #endif
      OwnPtr<SessionStore> m_session_store;
      OwnPtr<SessionStore> m_private_session_store;
++#if defined(SUPERBIRD_MODULE_TREE_TABS)
 +    OwnPtr<TreeTabStore> m_tree_tab_store;
 +    OwnPtr<TreeTabStore> m_private_tree_tab_store;
++#endif
      OwnPtr<WebView::FaviconStore> m_favicon_store;
      OwnPtr<WebView::FaviconStore> m_private_favicon_store;
      OwnPtr<BookmarkStore> m_bookmark_store;
 diff --git a/UI/Qt/BrowserWindow.cpp b/UI/Qt/BrowserWindow.cpp
-index 648d10e1..35942006 100644
+index 648d10e1..f45b31bd 100644
 --- a/UI/Qt/BrowserWindow.cpp
 +++ b/UI/Qt/BrowserWindow.cpp
-@@ -37,6 +37,8 @@
- #endif
- #include <UI/Qt/TabBar.h>
- #include <UI/Qt/Theme.h>
-+#include <UI/Qt/TreeTabs/TreeTabController.h>
-+#include <UI/Qt/TreeTabs/TreeTabView.h>
- #include <UI/Qt/WebContentView.h>
- #include <UI/Qt/WindowControlButton.h>
- 
-@@ -345,8 +347,15 @@ BrowserWindow::BrowserWindow(Vector<URL::URL> const& initial_urls, IsPopupWindow
+@@ -31,6 +31,7 @@
+ #include <UI/Qt/RemoteDownloads.h>
+ #include <UI/Qt/SessionStore.h>
+ #include <UI/Qt/StringUtils.h>
++#include <UI/Qt/Superbird/Core/WindowHost.h>
+ #include <UI/Qt/SystemAppearance.h>
+ #if defined(AK_OS_MACOS)
+ #    include <UI/Qt/MacWindow.h>
+@@ -345,6 +346,7 @@ BrowserWindow::BrowserWindow(Vector<URL::URL> const& initial_urls, IsPopupWindow
      : WebView::SettingsObserver(Application::settings())
      , m_is_private(is_private)
      , m_tabs_container(new TabWidget(is_private, this))
-+    , m_tree_tab_controller(make<TreeTabController>(*this))
++    , m_superbird(make<Superbird::WindowHost>(*this))
      , m_is_popup_window(is_popup_window)
  {
-+    m_tabs_container->set_tree_tabs_widget(m_tree_tab_controller->view());
-+    m_tabs_container->on_tree_tabs_rail_changed = [this](bool collapsed_rail) {
-+        if (auto* tree_view = m_tree_tab_controller->view())
-+            tree_view->set_collapsed_rail(collapsed_rail);
-+    };
-+
      // NB: The toolbar is made before the rest of the window, so it learns of the session's downloads once it is all here.
-     toolbar().update_downloads_button();
- 
-@@ -432,6 +441,7 @@ BrowserWindow::BrowserWindow(Vector<URL::URL> const& initial_urls, IsPopupWindow
+@@ -432,6 +434,7 @@ BrowserWindow::BrowserWindow(Vector<URL::URL> const& initial_urls, IsPopupWindow
      QObject::connect(m_tabs_container, &TabWidget::tab_close_requested, this, &BrowserWindow::request_to_close_tab);
      QObject::connect(m_tabs_container->tab_bar(), &QTabBar::tabMoved, this, [this](int, int) {
          sync_session_tab_order();
-+        m_tree_tab_controller->on_tab_moved_externally();
++        m_superbird->on_tab_moved_externally();
      });
  
      if (hub_view_id.has_value()) {
-@@ -650,15 +660,28 @@ void BrowserWindow::initialize_window_context_menu()
+@@ -650,6 +653,7 @@ void BrowserWindow::initialize_window_context_menu()
      add_tab_layout("Down the &Left Side", TabLayoutChoice::DownTheLeftSide);
      add_tab_layout("Down the &Right Side", TabLayoutChoice::DownTheRightSide);
      add_tab_layout("In the &Sidebar", TabLayoutChoice::InTheSidebar);
-+
-+    tab_layout_menu->addSeparator();
-+    m_tree_tabs_action = tab_layout_menu->addAction("Organize Tabs as a &Tree");
-+    m_tree_tabs_action->setCheckable(true);
-+    QObject::connect(m_tree_tabs_action, &QAction::triggered, this, [](bool checked) {
-+        auto tab_settings = Application::settings().tab_settings();
-+        tab_settings.tree_tabs_enabled = checked;
-+        if (checked && !tab_settings.vertical_tabs_enabled)
-+            tab_settings.vertical_tabs_enabled = true;
-+        Application::settings().set_tab_settings(tab_settings);
-+    });
++    m_superbird->attach_window_tab_layout_menu(*tab_layout_menu);
  }
  
  void BrowserWindow::show_window_context_menu(QPoint global_position)
- {
-     m_reopen_closed_tab_action->setEnabled(session().has_closed_units());
-     m_always_on_top_action->setChecked(windowFlags().testFlag(Qt::WindowStaysOnTopHint));
--    auto current_tab_layout = to_underlying(tab_layout_choice(Application::settings().tab_settings()));
-+    auto const& tab_settings = Application::settings().tab_settings();
-+    auto current_tab_layout = to_underlying(tab_layout_choice(tab_settings));
+@@ -659,6 +663,7 @@ void BrowserWindow::show_window_context_menu(QPoint global_position)
+     auto current_tab_layout = to_underlying(tab_layout_choice(Application::settings().tab_settings()));
      for (auto* action : m_tab_layout_actions->actions())
          action->setChecked(action->data().toInt() == current_tab_layout);
-+    m_tree_tabs_action->setChecked(tab_settings.vertical_tabs_enabled && tab_settings.tree_tabs_enabled);
++    m_superbird->update_window_tab_layout_menu();
  
      execute_context_menu(*m_window_context_menu, global_position);
  }
-@@ -672,6 +695,8 @@ void BrowserWindow::update_tabs_display()
+@@ -672,6 +677,7 @@ void BrowserWindow::update_tabs_display()
      // NB: With everything in the sidebar, the sidebar is on the left, beside the traffic lights.
      m_tabs_container->set_vertical_tabs_position(settings.everything_in_sidebar ? WebView::VerticalTabsPosition::Left : settings.vertical_tabs_position);
      m_tabs_container->set_everything_in_sidebar(settings.everything_in_sidebar);
-+    m_tabs_container->set_tree_tabs_enabled(settings.tree_tabs_enabled);
-+    m_tree_tab_controller->on_settings_changed();
++    m_superbird->on_settings_changed();
  }
  
  void BrowserWindow::rebuild_bookmarks_menu()
-@@ -728,6 +753,7 @@ void BrowserWindow::duplicate_tab(Tab& source_tab, Web::HTML::ActivateTab activa
+@@ -728,6 +734,7 @@ void BrowserWindow::duplicate_tab(Tab& source_tab, Web::HTML::ActivateTab activa
              fallback_url = WebView::display_url_for_session_history_entry(*top_level_entry);
      }
  
-+    m_tree_tab_controller->set_pending_opener(&source_tab);
++    m_superbird->on_pending_opener(&source_tab);
      auto& duplicate = create_new_tab(activate_tab, TabLocation::after_tab(source_tab));
      if (!history.has_value() || duplicate.view().restore_session_history_from_snapshot(history.release_value()).is_error())
          duplicate.navigate(fallback_url);
-@@ -752,6 +778,7 @@ void BrowserWindow::restore_tabs(Vector<RestoredSessionTab> const& tabs, i64 act
+@@ -752,6 +759,7 @@ void BrowserWindow::restore_tabs(Vector<RestoredSessionTab> const& tabs, i64 act
          if (i != active_index)
              create_restored_tab(tabs[i], static_cast<int>(i), !tabs[i].pinned);
      }
-+    m_tree_tab_controller->on_tabs_restored();
++    m_superbird->on_tabs_restored();
  }
  
  SessionStore& BrowserWindow::session() const
-@@ -821,6 +848,7 @@ Tab& BrowserWindow::create_new_tab(Web::HTML::ActivateTab activate_tab, Optional
+@@ -821,6 +829,7 @@ Tab& BrowserWindow::create_new_tab(Web::HTML::ActivateTab activate_tab, Optional
          m_tabs_container->set_current_tab(tab);
  
      initialize_tab(tab);
-+    m_tree_tab_controller->on_tab_added(*tab);
++    m_superbird->on_tab_added(*tab);
      return *tab;
  }
  
-@@ -880,6 +908,7 @@ Tab& BrowserWindow::create_new_tab(Web::HTML::ActivateTab activate_tab, TabLocat
+@@ -880,6 +889,7 @@ Tab& BrowserWindow::create_new_tab(Web::HTML::ActivateTab activate_tab, TabLocat
          m_background_tabs_from_current_tab.append(tab);
  
      initialize_tab(tab);
-+    m_tree_tab_controller->on_tab_added(*tab);
++    m_superbird->on_tab_added(*tab);
  
      return *tab;
  }
-@@ -897,8 +926,10 @@ void BrowserWindow::initialize_tab(Tab* tab)
+@@ -897,8 +907,10 @@ void BrowserWindow::initialize_tab(Tab* tab)
          auto session_tab_id = session().tab_opened(AK::move(opened));
          if (session_tab_id.is_error())
              dbgln("Unable to register the new tab with the session store: {}", session_tab_id.error());
 -        else
 +        else {
              tab->set_session_tab_id(session_tab_id.value());
-+            m_tree_tab_controller->on_tab_session_id_assigned(*tab);
++            m_superbird->on_tab_session_id_assigned(*tab);
 +        }
      }
  
      QObject::connect(tab, &Tab::title_changed, this, &BrowserWindow::tab_title_changed);
-@@ -906,9 +937,11 @@ void BrowserWindow::initialize_tab(Tab* tab)
+@@ -906,9 +918,11 @@ void BrowserWindow::initialize_tab(Tab* tab)
      QObject::connect(tab, &Tab::audio_state_changed, this, &BrowserWindow::tab_audio_state_changed);
      QObject::connect(tab, &Tab::microphone_in_use_changed, this, [this] {
          m_tabs_container->tab_bar()->update_microphone_indicators();
-+        m_tree_tab_controller->on_tab_metadata_changed();
++        m_superbird->on_tab_metadata_changed();
      });
      QObject::connect(tab, &Tab::loading_changed, this, [this] {
          m_tabs_container->tab_bar()->update_loading_ring_animation();
-+        m_tree_tab_controller->on_tab_metadata_changed();
++        m_superbird->on_tab_metadata_changed();
      });
  
      if (tab->is_loaded())
-@@ -934,7 +967,7 @@ void BrowserWindow::initialize_tab_view(Tab* tab)
+@@ -934,7 +948,7 @@ void BrowserWindow::initialize_tab_view(Tab* tab)
          }
      });
  
@@ -266,96 +253,108 @@ index 648d10e1..35942006 100644
          if (hints.popup) {
              auto cascaded_configuration = Application::the().configuration_for_new_window();
              WindowConfiguration configuration {
-@@ -945,6 +978,7 @@ void BrowserWindow::initialize_tab_view(Tab* tab)
+@@ -945,6 +959,7 @@ void BrowserWindow::initialize_tab_view(Tab* tab)
              window.place_popup_window(hints, *screen());
              return;
          }
-+        m_tree_tab_controller->set_pending_opener(tab);
++        m_superbird->on_pending_opener(tab);
          create_new_tab(activate_tab, hub_view_id);
      };
  }
-@@ -996,6 +1030,7 @@ void BrowserWindow::adopt_tab(Tab& tab, int index)
+@@ -996,6 +1011,7 @@ void BrowserWindow::adopt_tab(Tab& tab, int index)
      }
  
      m_tabs_container->set_current_tab(&tab);
-+    m_tree_tab_controller->on_tab_added(tab);
++    m_superbird->on_tab_added(tab);
  }
  
  void BrowserWindow::move_tab_to_window(int index, BrowserWindow& target_window, int target_index)
-@@ -1021,6 +1056,7 @@ void BrowserWindow::move_tab_to_window(int index, BrowserWindow& target_window,
+@@ -1021,6 +1037,7 @@ void BrowserWindow::move_tab_to_window(int index, BrowserWindow& target_window,
          tab->view().prepare_for_window_move();
      uninitialize_tab(tab);
      m_tabs_container->take_tab(index);
-+    m_tree_tab_controller->on_tab_removed(*tab);
++    m_superbird->on_tab_removed(*tab);
      if (m_current_tab == tab)
          set_current_tab(m_tabs_container->count() > 0 ? m_tabs_container->tab(m_tabs_container->current_index()) : nullptr);
  
-@@ -1100,6 +1136,7 @@ void BrowserWindow::set_current_tab(Tab* tab)
+@@ -1100,6 +1117,7 @@ void BrowserWindow::set_current_tab(Tab* tab)
      }
  
      reposition_page_cards();
-+    m_tree_tab_controller->on_active_tab_changed(m_current_tab);
++    m_superbird->on_active_tab_changed(m_current_tab);
      Application::the().report_active_view();
  }
  
-@@ -1183,6 +1220,7 @@ bool BrowserWindow::close_tab(int index, SessionStore::KeepForReopening keep_for
+@@ -1183,6 +1201,7 @@ bool BrowserWindow::close_tab(int index, SessionStore::KeepForReopening keep_for
  
      auto* tab = m_tabs_container->tab(index);
      m_tabs_container->remove_tab(index);
-+    m_tree_tab_controller->on_tab_removed(*tab);
++    m_superbird->on_tab_removed(*tab);
      if (auto session_tab_id = tab->session_tab_id(); session_tab_id.has_value()) {
          SessionStore::TabClosed closed {
              .tab_id = *session_tab_id,
-@@ -1256,6 +1294,7 @@ void BrowserWindow::discard_tab(Tab& tab)
+@@ -1256,6 +1275,7 @@ void BrowserWindow::discard_tab(Tab& tab)
      }
  
      m_tabs_container->replace_tab(index, discarded_tab);
-+    m_tree_tab_controller->on_tab_replaced(tab, *discarded_tab);
++    m_superbird->on_tab_replaced(tab, *discarded_tab);
      initialize_tab(discarded_tab);
      tab_title_changed(index, discarded_tab->title());
      tab_favicon_changed(index, discarded_tab->favicon());
-@@ -1326,6 +1365,7 @@ void BrowserWindow::pinned_state_changed(Tab& tab)
+@@ -1326,6 +1346,7 @@ void BrowserWindow::pinned_state_changed(Tab& tab)
      }
      update_tab_close_button(tab);
      m_tabs_container->update_tab_layout();
-+    m_tree_tab_controller->on_tab_pinned_changed(tab);
++    m_superbird->on_tab_pinned_changed(tab);
  }
  
  void BrowserWindow::activate_first_unpinned_tab()
-@@ -1389,6 +1429,7 @@ void BrowserWindow::tab_title_changed(int index, QString const& title)
+@@ -1389,6 +1410,7 @@ void BrowserWindow::tab_title_changed(int index, QString const& title)
  {
      m_tabs_container->set_tab_text(index, title);
      m_tabs_container->set_tab_tooltip(index, title);
-+    m_tree_tab_controller->on_tab_metadata_changed();
++    m_superbird->on_tab_metadata_changed();
  
      if (m_tabs_container->current_index() == index)
          update_window_title(title);
-@@ -1399,6 +1440,7 @@ void BrowserWindow::tab_favicon_changed(int index, QIcon const& icon)
+@@ -1399,6 +1421,7 @@ void BrowserWindow::tab_favicon_changed(int index, QIcon const& icon)
      if (index < 0)
          return;
      m_tabs_container->set_tab_icon(index, icon);
-+    m_tree_tab_controller->on_tab_metadata_changed();
++    m_superbird->on_tab_metadata_changed();
  }
  
  void BrowserWindow::update_chrome_style()
-@@ -1406,6 +1448,7 @@ void BrowserWindow::update_chrome_style()
+@@ -1406,6 +1429,7 @@ void BrowserWindow::update_chrome_style()
      menuBar()->setStyleSheet(ChromeStyle::menu_bar_style_sheet(Theme::chrome_palette(*this)));
      if (m_ladybird_menu_zoom_row)
          m_ladybird_menu_zoom_row->update_style();
-+    m_tree_tab_controller->on_chrome_style_changed();
++    m_superbird->on_chrome_style_changed();
  }
  
  TabBarButton* BrowserWindow::create_tab_close_button(Tab& tab)
-@@ -1601,6 +1644,7 @@ void BrowserWindow::tab_audio_state_changed(int index)
+@@ -1601,6 +1625,7 @@ void BrowserWindow::tab_audio_state_changed(int index)
      if (index < 0)
          return;
      update_tab_audio_button(*m_tabs_container->tab(index));
-+    m_tree_tab_controller->on_tab_metadata_changed();
++    m_superbird->on_tab_metadata_changed();
  }
  
  // The tab is shown playing audio, muted or not, while the view shows it playing audio. A muted tab keeps its button, as
+@@ -2101,6 +2126,11 @@ void BrowserWindow::appearance_changed()
+     });
+ }
+ 
++void BrowserWindow::superbird_settings_changed()
++{
++    m_superbird->on_settings_changed();
++}
++
+ void BrowserWindow::config_variable_changed(WebView::ConfigVariableID variable)
+ {
+     if (variable == WebView::ConfigVariableID::UseClientSideWindowDecorations)
 diff --git a/UI/Qt/BrowserWindow.h b/UI/Qt/BrowserWindow.h
-index 31196fb9..fc1f7fd2 100644
+index 31196fb9..d712aa68 100644
 --- a/UI/Qt/BrowserWindow.h
 +++ b/UI/Qt/BrowserWindow.h
 @@ -8,6 +8,7 @@
@@ -366,126 +365,66 @@ index 31196fb9..fc1f7fd2 100644
  #include <AK/Optional.h>
  #include <AK/kmalloc.h>
  #include <LibURL/URL.h>
-@@ -41,6 +42,7 @@ class MenuZoomRow;
+@@ -35,6 +36,10 @@ class QToolButton;
+ class QWidget;
+ class QWindow;
  
- class Tab;
- class TabBarButton;
-+class TreeTabController;
- class WebContentView;
- class BrowserWindow;
- class DevToolsBanner;
-@@ -167,6 +169,7 @@ public:
++namespace Superbird {
++class WindowHost;
++}
++
+ namespace Ladybird {
+ 
+ class MenuZoomRow;
+@@ -167,6 +172,7 @@ public:
      int tab_index(Tab*);
      Tab* tab_at(int index) const { return m_tabs_container->tab(index); }
      TabWidget& tab_widget() const { return *m_tabs_container; }
-+    TreeTabController& tree_tab_controller() const { return *m_tree_tab_controller; }
++    Superbird::WindowHost& superbird() const { return *m_superbird; }
      WindowToolbar& toolbar() const { return m_tabs_container->toolbar(); }
      BookmarksBar& bookmarks_bar() const { return m_tabs_container->bookmarks_bar(); }
      // Closes a tab that isn't worth reopening, such as an empty tab that other tabs took the place of.
-@@ -342,6 +345,7 @@ private:
+@@ -290,6 +296,7 @@ private:
+     virtual void closeEvent(QCloseEvent*) override;
+ 
+     virtual void appearance_changed() override;
++    virtual void superbird_settings_changed() override;
+     virtual void config_variable_changed(WebView::ConfigVariableID) override;
+ 
+     Tab& create_restored_tab(RestoredSessionTab const&, int index, bool defer);
+@@ -342,6 +349,7 @@ private:
      WebView::IsPrivate m_is_private { WebView::IsPrivate::No };
  
      TabWidget* m_tabs_container { nullptr };
-+    NonnullOwnPtr<TreeTabController> m_tree_tab_controller;
++    NonnullOwnPtr<Superbird::WindowHost> m_superbird;
      Tab* m_current_tab { nullptr };
      Array<QPointer<PageCard>, 2> m_page_cards;
      QPointer<WebContentView> m_page_cards_view;
-@@ -360,6 +364,7 @@ private:
-     QAction* m_reopen_closed_tab_action { nullptr };
-     QAction* m_always_on_top_action { nullptr };
-     QActionGroup* m_tab_layout_actions { nullptr };
-+    QAction* m_tree_tabs_action { nullptr };
- 
-     IsPopupWindow m_is_popup_window { IsPopupWindow::No };
- 
 diff --git a/UI/Qt/Tab.cpp b/UI/Qt/Tab.cpp
-index a2c3d920..5840b319 100644
+index a2c3d920..05777808 100644
 --- a/UI/Qt/Tab.cpp
 +++ b/UI/Qt/Tab.cpp
-@@ -40,6 +40,7 @@
+@@ -38,6 +38,7 @@
+ #include <UI/Qt/SiteSettingsPopover.h>
+ #include <UI/Qt/StringUtils.h>
  #include <UI/Qt/SuggestionProvider.h>
++#include <UI/Qt/Superbird/Core/WindowHost.h>
  #include <UI/Qt/SystemAppearance.h>
  #include <UI/Qt/Theme.h>
-+#include <UI/Qt/TreeTabs/TreeTabController.h>
  
- #include <QAction>
- #include <QApplication>
-@@ -957,13 +958,50 @@ void Tab::create_tab_context_menu()
-         }
-     });
- 
-+    auto* new_child_tab_action = new QAction("New &Child Tab", this);
-+    QObject::connect(new_child_tab_action, &QAction::triggered, this, [this]() {
-+        m_window->tree_tab_controller().new_child_tab(*this);
-+    });
-+
-+    auto* toggle_branch_action = new QAction(this);
-+    QObject::connect(toggle_branch_action, &QAction::triggered, this, [this]() {
-+        m_window->tree_tab_controller().toggle_branch_collapsed(*this);
-+    });
-+
-+    auto* unload_branch_action = new QAction("&Unload Branch", this);
-+    QObject::connect(unload_branch_action, &QAction::triggered, this, [this]() {
-+        m_window->tree_tab_controller().unload_branch(*this);
-+    });
-+
-+    auto* bookmark_branch_action = new QAction("&Bookmark Branch…", this);
-+    QObject::connect(bookmark_branch_action, &QAction::triggered, this, [this]() {
-+        m_window->tree_tab_controller().bookmark_branch(*this);
-+    });
-+
-+    auto* move_branch_to_new_window_action = new QAction("Move Branch to New Window", this);
-+    QObject::connect(move_branch_to_new_window_action, &QAction::triggered, this, [this]() {
-+        m_window->tree_tab_controller().move_branch_to_new_window(*this);
-+    });
-+
-+    auto* close_branch_action = new QAction("Close B&ranch", this);
-+    QObject::connect(close_branch_action, &QAction::triggered, this, [this]() {
-+        m_window->tree_tab_controller().close_branch(*this);
-+    });
-+
-     m_context_menu = new QMenu("Context menu", this);
-     m_context_menu->addAction(new_tab_action);
-+    m_context_menu->addAction(new_child_tab_action);
-     m_context_menu->addSeparator();
-     m_context_menu->addAction(create_application_action(*this, application.reload_action(), IncludeActionIcon::No));
+@@ -964,6 +965,7 @@ void Tab::create_tab_context_menu()
      m_context_menu->addAction(duplicate_tab_action);
      m_context_menu->addAction(m_pin_tab_action);
      m_context_menu->addAction(mute_tab_action);
-+    auto* tree_branch_separator = m_context_menu->addSeparator();
-+    m_context_menu->addAction(toggle_branch_action);
-+    m_context_menu->addAction(unload_branch_action);
-+    m_context_menu->addAction(bookmark_branch_action);
-+    m_context_menu->addAction(move_branch_to_new_window_action);
-+    m_context_menu->addAction(close_branch_action);
++    m_window->superbird().attach_tab_context_menu(*this, *m_context_menu);
      m_context_menu->addSeparator();
      m_context_menu->addAction(move_to_new_window_action);
      m_context_menu->addAction(copy_link_action);
-@@ -974,11 +1012,26 @@ void Tab::create_tab_context_menu()
-     m_context_menu->addSeparator();
-     m_context_menu->addAction(Application::the().reopen_recently_closed_tab_action());
- 
--    QObject::connect(m_context_menu, &QMenu::aboutToShow, this, [this, new_tab_action, close_following_tabs_action, mute_tab_action, move_to_new_window_action]() {
-+    QObject::connect(m_context_menu, &QMenu::aboutToShow, this, [this, new_tab_action, new_child_tab_action, tree_branch_separator, toggle_branch_action, unload_branch_action, bookmark_branch_action, move_branch_to_new_window_action, close_branch_action, close_following_tabs_action, mute_tab_action, move_to_new_window_action]() {
+@@ -978,6 +980,7 @@ void Tab::create_tab_context_menu()
          auto is_horizontal = m_window->tab_widget().tab_bar()->tab_layout() == TabLayout::Horizontal;
          new_tab_action->setText(is_horizontal ? "New Tab to the &Right" : "New Tab &Below");
          close_following_tabs_action->setText(is_horizontal ? "Close Tabs to the R&ight" : "Close Tabs B&elow");
++        m_window->superbird().update_tab_context_menu(*this);
  
-+        auto& tree = m_window->tree_tab_controller();
-+        auto show_tree_actions = tree.is_enabled() && !m_is_pinned;
-+        auto has_branch = show_tree_actions && tree.has_children(*this);
-+        new_child_tab_action->setVisible(show_tree_actions);
-+        tree_branch_separator->setVisible(has_branch);
-+        toggle_branch_action->setVisible(has_branch);
-+        if (has_branch)
-+            toggle_branch_action->setText(tree.is_collapsed(*this) ? "E&xpand Branch" : "Co&llapse Branch");
-+        unload_branch_action->setVisible(has_branch);
-+        unload_branch_action->setEnabled(has_branch && tree.has_unloadable_tabs_in_branch(*this));
-+        bookmark_branch_action->setVisible(has_branch);
-+        move_branch_to_new_window_action->setVisible(has_branch);
-+        move_branch_to_new_window_action->setEnabled(has_branch && static_cast<int>(tree.descendant_count(*this) + 1) < m_window->tab_count());
-+        close_branch_action->setVisible(has_branch);
-+
          // A tab that hasn't loaded has no page to mute yet.
          mute_tab_action->setEnabled(is_loaded());
-         mute_tab_action->setText(is_loaded() && view().page_mute_state() == Web::HTML::MuteState::Muted ? "Un&mute Tab" : "&Mute Tab");

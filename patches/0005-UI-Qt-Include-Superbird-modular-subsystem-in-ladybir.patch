@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Superbird <superbird@local>
+Date: Tue, 24 Nov 2026 12:28:54 -0600
+Subject: [PATCH] UI/Qt: Include Superbird modular subsystem in ladybird_impl
+
+
+diff --git a/UI/Qt/CMakeLists.txt b/UI/Qt/CMakeLists.txt
+index f26f17c7..b5b947c3 100644
+--- a/UI/Qt/CMakeLists.txt
++++ b/UI/Qt/CMakeLists.txt
+@@ -87,6 +87,8 @@ if (NOT APPLE AND NOT WIN32 AND NOT ANDROID)
+     )
+ endif()
+ 
++include(Superbird/CMakeLists.txt)
++
+ target_link_libraries(ladybird_impl PUBLIC Qt::Core Qt::Gui Qt::Widgets)
+ target_link_libraries(ladybird_impl PRIVATE LibDatabase LibFileSystem LibUnicode)
+ 

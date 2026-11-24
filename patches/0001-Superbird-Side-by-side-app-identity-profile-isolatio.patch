@@ -1,0 +1,293 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Superbird <superbird@local>
+Date: Tue, 24 Nov 2026 04:56:29 -0600
+Subject: [PATCH] Superbird: Side-by-side app identity, profile isolation, and
+ CMake module flags
+
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ff886075..1018d689 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -41,6 +41,7 @@ set(LADYBIRD_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+ list(APPEND CMAKE_MODULE_PATH "${LADYBIRD_SOURCE_DIR}/Meta/CMake")
+ 
+ include(cmake_options)
++include(SuperbirdModules)
+ include(compile_options)
+ include(check_for_dependencies)
+ include(ladybird_helper_processes)
+diff --git a/Libraries/LibCore/CMakeLists.txt b/Libraries/LibCore/CMakeLists.txt
+index c10e5199..33aec48e 100644
+--- a/Libraries/LibCore/CMakeLists.txt
++++ b/Libraries/LibCore/CMakeLists.txt
+@@ -133,7 +133,7 @@ if (NOT LADYBIRD_VERSION STREQUAL "")
+         set(browser_is_final_release 1)
+     endif()
+ endif()
+-string(JOIN " " browser_product_name "Ladybird" ${browser_release_stage})
++string(JOIN " " browser_product_name "Superbird" ${browser_release_stage})
+ configure_file(BrowserVersion.h.in BrowserVersion.h @ONLY)
+ if (ENABLE_INSTALL_HEADERS)
+     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/BrowserVersion.h" COMPONENT Lagom_Development
+diff --git a/Libraries/LibWebView/Application.cpp b/Libraries/LibWebView/Application.cpp
+index 88290113..72ac501a 100644
+--- a/Libraries/LibWebView/Application.cpp
++++ b/Libraries/LibWebView/Application.cpp
+@@ -813,7 +813,7 @@ ErrorOr<void> Application::create_profile([[maybe_unused]] Optional<StringView>
+     profile_roots.cache = LexicalPath { profile_roots.cache }.parent().string();
+ #endif
+ 
+-    m_instance_data_directory = LexicalPath::join(profile_roots.data, "Ladybird"sv).string();
++    m_instance_data_directory = LexicalPath::join(profile_roots.data, "Superbird"sv).string();
+ 
+ #if defined(AK_OS_ANDROID)
+     m_profile = TRY(Profile::create_legacy(profile_roots));
+@@ -835,7 +835,7 @@ ErrorOr<void> Application::create_profile([[maybe_unused]] Optional<StringView>
+ void Application::create_mach_port_server([[maybe_unused]] ByteString const& profile_identity)
+ {
+ #if defined(AK_OS_MACOS)
+-    auto mach_process_name = ByteString::formatted("Ladybird-{}", profile_identity);
++    auto mach_process_name = ByteString::formatted("Superbird-{}", profile_identity);
+     m_mach_port_server = make<IPC::MachBootstrapListener>(mach_server_name_for_process(mach_process_name, Core::System::getpid()));
+     set_mach_server_name(m_mach_port_server->server_port_name());
+ 
+diff --git a/Libraries/LibWebView/BrowserProcess.cpp b/Libraries/LibWebView/BrowserProcess.cpp
+index 9b371a01..4834ebc7 100644
+--- a/Libraries/LibWebView/BrowserProcess.cpp
++++ b/Libraries/LibWebView/BrowserProcess.cpp
+@@ -231,7 +231,7 @@ static Optional<pid_t> read_pid_file(StringView pid_path)
+ 
+ ErrorOr<BrowserProcess::ProcessDisposition> BrowserProcess::connect(Vector<ByteString> const& raw_urls, NewWindow new_window, StringView runtime_directory, [[maybe_unused]] StringView profile_identity, Optional<pid_t> ui_pid, Optional<UnixDateTime> replace_browser_from_before)
+ {
+-    static constexpr auto process_name = "Ladybird"sv;
++    static constexpr auto process_name = "Superbird"sv;
+ 
+     auto startup_lock_path = LexicalPath::join(runtime_directory, "startup.lock"sv).string();
+     auto startup_lock = TRY(Core::File::open(startup_lock_path, Core::File::OpenMode::ReadWrite));
+@@ -413,7 +413,7 @@ ErrorOr<BrowserProcess::HandoverResult> BrowserProcess::connect_as_client(pid_t
+ {
+     // NB: Only the browser of this profile with this PID has a server of this name. A PID file that an earlier browser
+     //     left behind does not lead to one, whichever process has that PID now.
+-    auto process_name = ByteString::formatted("Ladybird-{}", profile_identity);
++    auto process_name = ByteString::formatted("Superbird-{}", profile_identity);
+     auto server_port = Core::MachPort::look_up_from_bootstrap_server(mach_server_name_for_process(process_name, pid));
+     if (server_port.is_error())
+         return HandoverResult { Handover::BrowserIsGone };
+diff --git a/Libraries/LibWebView/NotificationBackendMacOS.mm b/Libraries/LibWebView/NotificationBackendMacOS.mm
+index f31e66bc..555c41ca 100644
+--- a/Libraries/LibWebView/NotificationBackendMacOS.mm
++++ b/Libraries/LibWebView/NotificationBackendMacOS.mm
+@@ -60,7 +60,7 @@ NotificationBackendMacOS::NotificationBackendMacOS()
+     m_launch_token = MUST(String::from_utf8(StringView { [[[NSUUID UUID] UUIDString] UTF8String], strlen([[[NSUUID UUID] UUIDString] UTF8String]) }));
+ 
+     // The center reports a user's dismissal only for a category that asks for it.
+-    auto* category = [UNNotificationCategory categoryWithIdentifier:@"org.ladybird.Ladybird.web-notification"
++    auto* category = [UNNotificationCategory categoryWithIdentifier:@"org.superbird.Superbird.web-notification"
+                                                             actions:@[]
+                                                   intentIdentifiers:@[]
+                                                             options:UNNotificationCategoryOptionCustomDismissAction];
+@@ -131,7 +131,7 @@ void NotificationBackendMacOS::show(PlatformNotification const& notification)
+         content.subtitle = ns_string(notification.attribution);
+         content.body = ns_string(platform_text(notification.data.body));
+         content.threadIdentifier = ns_string(notification.attribution);
+-        content.categoryIdentifier = @"org.ladybird.Ladybird.web-notification";
++        content.categoryIdentifier = @"org.superbird.Superbird.web-notification";
+         if (notification.data.silent != true)
+             content.sound = [UNNotificationSound defaultSound];
+ 
+diff --git a/Libraries/LibWebView/NotificationFreedesktopArguments.cpp b/Libraries/LibWebView/NotificationFreedesktopArguments.cpp
+index fb77885c..517a4682 100644
+--- a/Libraries/LibWebView/NotificationFreedesktopArguments.cpp
++++ b/Libraries/LibWebView/NotificationFreedesktopArguments.cpp
+@@ -69,9 +69,9 @@ static FreedesktopImageData image_data_for(Gfx::Bitmap const& bitmap)
+ FreedesktopNotifyArguments build_notify_arguments(PlatformNotification const& notification, FreedesktopCapabilities const& capabilities, u32 replaces_daemon_id)
+ {
+     FreedesktopNotifyArguments arguments;
+-    arguments.app_name = "Ladybird"_string;
++    arguments.app_name = "Superbird"_string;
+     arguments.replaces_id = replaces_daemon_id;
+-    arguments.app_icon = "org.ladybird.Ladybird"_string;
++    arguments.app_icon = "org.superbird.Superbird"_string;
+     auto title = platform_text(notification.data.title);
+     auto body = platform_text(notification.data.body);
+ 
+@@ -101,7 +101,7 @@ FreedesktopNotifyArguments build_notify_arguments(PlatformNotification const& no
+     bool quiet_replacement = notification.replaces.has_value() && !notification.data.renotify;
+     if (notification.data.silent == true || quiet_replacement)
+         arguments.hints.append({ "suppress-sound"_string, true });
+-    arguments.hints.append({ "desktop-entry"_string, "org.ladybird.Ladybird"_string });
++    arguments.hints.append({ "desktop-entry"_string, "org.superbird.Superbird"_string });
+     if (notification.icon && notification.icon->width() <= icon_maximum_side && notification.icon->height() <= icon_maximum_side)
+         arguments.hints.append({ "image-data"_string, image_data_for(*notification.icon) });
+ 
+diff --git a/Libraries/LibWebView/Profile.cpp b/Libraries/LibWebView/Profile.cpp
+index 918ec037..9e411b2a 100644
+--- a/Libraries/LibWebView/Profile.cpp
++++ b/Libraries/LibWebView/Profile.cpp
+@@ -17,7 +17,7 @@ namespace WebView {
+ 
+ static ByteString profile_path(StringView root, StringView identifier)
+ {
+-    return LexicalPath::join(root, "Ladybird"sv, "Profiles"sv, identifier).string();
++    return LexicalPath::join(root, "Superbird"sv, "Profiles"sv, identifier).string();
+ }
+ 
+ static ErrorOr<void> create_profile_directories(ProfilePaths const& paths)
+@@ -124,7 +124,7 @@ ErrorOr<Profile> Profile::create(ProfileSelection const& selection, ProfileRoots
+     if (selection.temporary) {
+         TRY(Core::Directory::create(roots.temporary, Core::Directory::CreateDirectories::Yes, 0700));
+ 
+-        auto root = LexicalPath::join(roots.temporary, ByteString::formatted("ladybird-profile-{:016x}-{:016x}", get_random<u64>(), get_random<u64>())).string();
++        auto root = LexicalPath::join(roots.temporary, ByteString::formatted("superbird-profile-{:016x}-{:016x}", get_random<u64>(), get_random<u64>())).string();
+         TRY(Core::Directory::create(root, Core::Directory::CreateDirectories::Yes, 0700));
+         root = TRY(FileSystem::real_path(root));
+ 
+@@ -161,11 +161,11 @@ ErrorOr<Profile> Profile::create(ProfileSelection const& selection, ProfileRoots
+ ErrorOr<Profile> Profile::create_legacy(ProfileRoots const& roots)
+ {
+     ProfilePaths paths {
+-        .config = LexicalPath::join(roots.config, "Ladybird"sv).string(),
+-        .data = LexicalPath::join(roots.data, "Ladybird"sv).string(),
+-        .cache = LexicalPath::join(roots.cache, "Ladybird"sv).string(),
++        .config = LexicalPath::join(roots.config, "Superbird"sv).string(),
++        .data = LexicalPath::join(roots.data, "Superbird"sv).string(),
++        .cache = LexicalPath::join(roots.cache, "Superbird"sv).string(),
+         .runtime = roots.runtime,
+-        .identity = LexicalPath::join(roots.data, "Ladybird"sv).string(),
++        .identity = LexicalPath::join(roots.data, "Superbird"sv).string(),
+     };
+ 
+     TRY(create_profile_directories(paths));
+diff --git a/UI/CMakeLists.txt b/UI/CMakeLists.txt
+index 7ef5450a..08b00725 100644
+--- a/UI/CMakeLists.txt
++++ b/UI/CMakeLists.txt
+@@ -45,14 +45,14 @@ endif()
+ 
+ function(create_ladybird_bundle target_name)
+     set_target_properties(${target_name} PROPERTIES
+-        OUTPUT_NAME "Ladybird"
+-        MACOSX_BUNDLE_GUI_IDENTIFIER org.ladybird.Ladybird
++        OUTPUT_NAME "Superbird"
++        MACOSX_BUNDLE_GUI_IDENTIFIER org.superbird.Superbird
+         MACOSX_BUNDLE_BUNDLE_VERSION ${LADYBIRD_BROWSER_VERSION}
+         MACOSX_BUNDLE_SHORT_VERSION_STRING ${LADYBIRD_BROWSER_VERSION}
+         MACOSX_BUNDLE_INFO_PLIST "${LADYBIRD_SOURCE_DIR}/UI/Info.plist"
+         MACOSX_BUNDLE TRUE
+         WIN32_EXECUTABLE TRUE
+-        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER org.ladybird.Ladybird
++        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER org.superbird.Superbird
+     )
+ 
+     if (APPLE)
+diff --git a/UI/Info.plist b/UI/Info.plist
+index adae3f83..b1919e6e 100644
+--- a/UI/Info.plist
++++ b/UI/Info.plist
+@@ -11,17 +11,17 @@
+         <key>CFBundlePackageType</key>
+         <string>APPL</string>
+         <key>CFBundleGetInfoString</key>
+-        <string>Ladybird</string>
++        <string>Superbird</string>
+         <key>CFBundleName</key>
+-        <string>Ladybird</string>
++        <string>Superbird</string>
+         <key>CFBundleDisplayName</key>
+-        <string>Ladybird</string>
++        <string>Superbird</string>
+         <key>CFBundleSignature</key>
+         <string></string>
+         <key>CFBundleExecutable</key>
+-        <string>Ladybird</string>
++        <string>Superbird</string>
+         <key>CFBundleIdentifier</key>
+-        <string>org.ladybird.Ladybird</string>
++        <string>org.superbird.Superbird</string>
+         <key>CFBundleShortVersionString</key>
+         <string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
+         <key>CFBundleVersion</key>
+diff --git a/UI/Qt/Application.cpp b/UI/Qt/Application.cpp
+index 5207cd38..2d5b764d 100644
+--- a/UI/Qt/Application.cpp
++++ b/UI/Qt/Application.cpp
+@@ -861,7 +861,7 @@ ErrorOr<void> Application::connect_to_hub(Main::Arguments const& arguments)
+     // NB: This must answer while the main thread waits for the Hub to initialize, so it answers on its own thread.
+     //     Every round uses the same server, as its name cannot be registered again right after it was let go of.
+     auto hub_bootstrap = adopt_ref(*new HubBootstrap);
+-    IPC::MachBootstrapListener bootstrap_listener { WebView::mach_server_name_for_process("Ladybird-UI"sv, Core::System::getpid()) };
++    IPC::MachBootstrapListener bootstrap_listener { WebView::mach_server_name_for_process("Superbird-UI"sv, Core::System::getpid()) };
+     if (!bootstrap_listener.is_initialized())
+         return Error::from_string_literal("Unable to start the Mach server for the Hub");
+     bootstrap_listener.on_bootstrap_request = [hub_bootstrap](IPC::MachBootstrapListener::BootstrapRequest request) {
+@@ -1360,7 +1360,7 @@ void Application::will_create_event_loop(Main::Arguments& arguments)
+     new PNGMimeConverter;
+ #endif
+ #if defined(AK_OS_LINUX)
+-    QGuiApplication::setDesktopFileName(QStringLiteral("org.ladybird.Ladybird"));
++    QGuiApplication::setDesktopFileName(QStringLiteral("org.superbird.Superbird"));
+     Ladybird::clip_translucent_windows_that_cannot_blend();
+ #endif
+ #if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
+diff --git a/UI/Qt/ExternalURLHandler.cpp b/UI/Qt/ExternalURLHandler.cpp
+index 4cf78aa1..50557f54 100644
+--- a/UI/Qt/ExternalURLHandler.cpp
++++ b/UI/Qt/ExternalURLHandler.cpp
+@@ -21,7 +21,7 @@
+ 
+ namespace Ladybird {
+ 
+-static constexpr auto default_ladybird_desktop_id = "org.ladybird.Ladybird.desktop"sv;
++static constexpr auto default_ladybird_desktop_id = "org.superbird.Superbird.desktop"sv;
+ static Core::EventLoop* s_main_thread_event_loop;
+ 
+ struct LadybirdAppLaunchContext {
+diff --git a/UI/Qt/ExternalURLHandler.mm b/UI/Qt/ExternalURLHandler.mm
+index ec993c58..7f6663fe 100644
+--- a/UI/Qt/ExternalURLHandler.mm
++++ b/UI/Qt/ExternalURLHandler.mm
+@@ -84,7 +84,7 @@ void resolve_external_url_handler(URL::URL const& url, WebView::ExternalURLHandl
+ 
+     bool is_ladybird = false;
+     if (auto* bundle_identifier = [[NSBundle bundleWithURL:application_url] bundleIdentifier]; bundle_identifier != nil) {
+-        is_ladybird = [bundle_identifier caseInsensitiveCompare:@"org.ladybird.Ladybird"] == NSOrderedSame;
++        is_ladybird = [bundle_identifier caseInsensitiveCompare:@"org.superbird.Superbird"] == NSOrderedSame;
+     }
+ 
+     if (!is_ladybird) {
+diff --git a/UI/cmake/InstallRules.cmake b/UI/cmake/InstallRules.cmake
+index a8b2bc48..9124933a 100644
+--- a/UI/cmake/InstallRules.cmake
++++ b/UI/cmake/InstallRules.cmake
+@@ -5,7 +5,7 @@ include(GNUInstallDirs)
+ set(package Ladybird)
+ 
+ if (APPLE)
+-    set(ladybird_executable_install_dir bundle/Ladybird.app/Contents/MacOS)
++    set(ladybird_executable_install_dir bundle/Superbird.app/Contents/MacOS)
+     set(ladybird_helper_install_dir ${ladybird_executable_install_dir})
+ else()
+     set(ladybird_executable_install_dir ${CMAKE_INSTALL_BINDIR})
+@@ -77,7 +77,7 @@ if (APPLE)
+     # CMake strips every executable it installs except the one inside an application bundle, so strip that one here.
+     # Remove the symlink we created at build time for the lib directory first
+     install(CODE "
+-    set(contents_dir \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bundle/Ladybird.app/Contents)
++    set(contents_dir \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bundle/Superbird.app/Contents)
+     file(REMOVE \${contents_dir}/lib)
+     set(lib_dir \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
+     if (IS_ABSOLUTE ${CMAKE_INSTALL_LIBDIR})
+@@ -118,9 +118,9 @@ if (vcpkg_runtime_dependencies)
+     set(vcpkg_library_install_dir ${CMAKE_INSTALL_LIBDIR})
+     set(qt_plugins "")
+     if (APPLE)
+-        set(vcpkg_library_install_dir bundle/Ladybird.app/Contents/lib)
+-        set(qt_plugins_dir bundle/Ladybird.app/Contents/PlugIns)
+-        set(qt_conf_dir bundle/Ladybird.app/Contents/Resources)
++        set(vcpkg_library_install_dir bundle/Superbird.app/Contents/lib)
++        set(qt_plugins_dir bundle/Superbird.app/Contents/PlugIns)
++        set(qt_conf_dir bundle/Superbird.app/Contents/Resources)
+         set(qt_conf_plugins PlugIns)
+ 
+         get_target_property(qt_core_type Qt6::Core TYPE)

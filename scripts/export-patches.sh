@@ -10,16 +10,16 @@ if [[ "$UPSTREAM_GIT_DIR" != /* ]]; then
     UPSTREAM_GIT_DIR="$UPSTREAM_DIR/$UPSTREAM_GIT_DIR"
 fi
 
-BASE_FILE="$UPSTREAM_GIT_DIR/sidelady-base"
+BASE_FILE="$UPSTREAM_GIT_DIR/superbird-base"
 if [[ ! -f "$BASE_FILE" ]]; then
-    echo "Error: no sidelady-base recorded. Run ./scripts/apply.sh first." >&2
+    echo "Error: no superbird-base recorded. Run ./scripts/apply.sh first." >&2
     exit 1
 fi
 
 BASE_SHA="$(cat "$BASE_FILE")"
 BRANCH="$(git -C "$UPSTREAM_DIR" rev-parse --abbrev-ref HEAD)"
-if [[ "$BRANCH" != "sidelady" ]]; then
-    echo "Error: upstream/ must be on the 'sidelady' branch (currently: $BRANCH)." >&2
+if [[ "$BRANCH" != "superbird" ]]; then
+    echo "Error: upstream/ must be on the 'superbird' branch (currently: $BRANCH)." >&2
     exit 1
 fi
 
@@ -40,5 +40,5 @@ git -C "$UPSTREAM_DIR" format-patch \
     -o "$PATCHES_DIR" \
     "${BASE_SHA}..HEAD"
 
-echo "[sidelady] Exported patches to $PATCHES_DIR:"
+echo "[superbird] Exported patches to $PATCHES_DIR:"
 ls -1 "$PATCHES_DIR"/*.patch 2>/dev/null || echo "  (none)"

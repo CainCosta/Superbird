@@ -1,4 +1,4 @@
-name: Build Sidelady
+name: Build Superbird
 
 on:
   push:
@@ -29,15 +29,17 @@ jobs:
 
       - name: Apply overlay and patches
         run: |
-          git -C upstream config user.name "Sidelady CI"
-          git -C upstream config user.email "ci@sidelady.local"
+          git -C upstream config user.name "Superbird CI"
+          git -C upstream config user.email "ci@superbird.local"
           ./scripts/apply.sh
 
-      - name: Run TreeTabModel C++23 unit tests
+      - name: Run Superbird C++23 unit tests
         run: ./scripts/test-unit.sh
 
-      - name: Syntax-check settings/tabs.js
-        run: node --check upstream/Base/res/ladybird/about-pages/settings/tabs.js
+      - name: Syntax-check settings JS
+        run: |
+          node --check upstream/Base/res/ladybird/about-pages/settings/tabs.js
+          node --check upstream/Base/res/ladybird/about-pages/settings/superbird.js
 
   build-macos:
     name: Build macOS (arm64)
@@ -51,11 +53,11 @@ jobs:
           submodules: true
           fetch-depth: 1
 
-      - name: Apply Sidelady overlay and patches
+      - name: Apply Superbird overlay and patches
         shell: bash
         run: |
-          git -C upstream config user.name "Sidelady CI"
-          git -C upstream config user.email "ci@sidelady.local"
+          git -C upstream config user.name "Superbird CI"
+          git -C upstream config user.email "ci@superbird.local"
           ./scripts/apply.sh
 
       - name: Select latest stable Xcode
@@ -138,7 +140,7 @@ jobs:
         run: |
           python3 -c 'import pathlib, sys; sys.path.insert(0, "Meta"); from Utils.build_vcpkg import build_vcpkg; build_vcpkg(pathlib.Path("Build/vcpkg-distribution").resolve())'
 
-      - name: Configure Sidelady & build vcpkg dependencies (macOS)
+      - name: Configure Superbird & build vcpkg dependencies (macOS)
         working-directory: upstream
         shell: bash
         env:
@@ -175,7 +177,7 @@ jobs:
           path: upstream/Build/caches/vcpkg-binary-cache
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
-      - name: Build UI layer first (fail-fast on TreeTabs/Qt)
+      - name: Build UI layer first (fail-fast on Superbird/Qt)
         working-directory: upstream
         shell: bash
         env:
@@ -190,16 +192,16 @@ jobs:
       - name: Build & install full macOS bundle
         working-directory: upstream
         shell: bash
+        env:
+          CCACHE_COMPILERCHECK: "%compiler% -v"
+          SCCACHE_CACHE_SIZE: 1G
+          SCCACHE_IDLE_TIMEOUT: "0"
         run: |
           export CCACHE_DIR="$PWD/.ccache"
           export SCCACHE_DIR="$PWD/.sccache"
           cmake --build Build --target sign_ladybird_bundle
           cmake --install Build --strip --component ladybird_Runtime --prefix "$PWD/../Install"
           ccache -s
-        env:
-          CCACHE_COMPILERCHECK: "%compiler% -v"
-          SCCACHE_CACHE_SIZE: 1G
-          SCCACHE_IDLE_TIMEOUT: "0"
 
       - name: Stop sccache & prune ccache before saving
         if: always()
@@ -231,16 +233,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APP_PATH="$PWD/Install/bundle/Ladybird.app"
+          APP_PATH="$PWD/Install/bundle/Superbird.app"
           if [[ ! -d "$APP_PATH" ]]; then
-            echo "Error: Installed Ladybird.app not found at $APP_PATH!" >&2
+            echo "Error: Installed Superbird.app not found at $APP_PATH!" >&2
             exit 1
           fi
 
           # Strip build-tree rpaths from bundled dylibs/plugins and re-sign inside-out
           # after `cmake --install --strip` invalidated the build-time ad-hoc signatures.
           python3 - "$APP_PATH" "$PWD/upstream/Build" "$PWD/upstream/Meta/Entitlements.plist" <<'PY'
-          import os, subprocess, sys
+          import subprocess, sys
           from pathlib import Path
 
           app = Path(sys.argv[1])
@@ -281,7 +283,7 @@ jobs:
                   subprocess.run(["codesign", "--sign", "-", "--force", str(p)], check=True)
 
           macos_dir = contents / "MacOS"
-          main_bin = macos_dir / "Ladybird"
+          main_bin = macos_dir / "Superbird"
           for exe in sorted(macos_dir.iterdir()):
               if not is_macho(exe):
                   continue
@@ -314,14 +316,14 @@ jobs:
 
           mkdir -p packages
           echo "Packaging $APP_PATH..."
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" packages/Sidelady-macOS-arm64.zip
-          ls -lh packages/Sidelady-macOS-arm64.zip
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" packages/Superbird-macOS-arm64.zip
+          ls -lh packages/Superbird-macOS-arm64.zip
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Sidelady-macOS-arm64
-          path: packages/Sidelady-macOS-arm64.zip
+          name: Superbird-macOS-arm64
+          path: packages/Superbird-macOS-arm64.zip
           if-no-files-found: error
 
   build-linux:
@@ -339,13 +341,13 @@ jobs:
           submodules: true
           fetch-depth: 1
 
-      - name: Apply Sidelady overlay and patches
+      - name: Apply Superbird overlay and patches
         shell: bash
         run: |
           git config --global --add safe.directory "$PWD"
           git config --global --add safe.directory "$PWD/upstream"
-          git -C upstream config user.name "Sidelady CI"
-          git -C upstream config user.email "ci@sidelady.local"
+          git -C upstream config user.name "Superbird CI"
+          git -C upstream config user.email "ci@superbird.local"
           ./scripts/apply.sh
 
       - name: Set up Python environment
@@ -393,7 +395,7 @@ jobs:
         run: |
           python3 -c 'import pathlib, sys; sys.path.insert(0, "Meta"); from Utils.build_vcpkg import build_vcpkg; build_vcpkg(pathlib.Path("Build/vcpkg-distribution").resolve())'
 
-      - name: Configure Sidelady & build vcpkg dependencies (Linux)
+      - name: Configure Superbird & build vcpkg dependencies (Linux)
         working-directory: upstream
         shell: bash
         env:
@@ -427,7 +429,7 @@ jobs:
           path: upstream/Build/caches/vcpkg-binary-cache
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
-      - name: Build UI layer first (fail-fast on TreeTabs/Qt)
+      - name: Build UI layer first (fail-fast on Superbird/Qt)
         working-directory: upstream
         shell: bash
         env:
@@ -485,17 +487,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -x "$PWD/Install/bin/Ladybird" ]]; then
-            echo "Error: Installed Ladybird binary not found at $PWD/Install/bin/Ladybird!" >&2
+          if [[ ! -x "$PWD/Install/bin/Superbird" ]]; then
+            echo "Error: Installed Superbird binary not found at $PWD/Install/bin/Superbird!" >&2
             exit 1
           fi
           mkdir -p packages
-          tar -C "$PWD/Install" -cJf packages/Sidelady-Linux-x86_64.tar.xz .
-          ls -lh packages/Sidelady-Linux-x86_64.tar.xz
+          tar -C "$PWD/Install" -cJf packages/Superbird-Linux-x86_64.tar.xz .
+          ls -lh packages/Superbird-Linux-x86_64.tar.xz
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Sidelady-Linux-x86_64
-          path: packages/Sidelady-Linux-x86_64.tar.xz
+          name: Superbird-Linux-x86_64
+          path: packages/Superbird-Linux-x86_64.tar.xz
           if-no-files-found: error

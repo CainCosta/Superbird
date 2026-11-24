@@ -9,8 +9,10 @@ if [[ "$UPSTREAM_GIT_DIR" != /* ]]; then
     UPSTREAM_GIT_DIR="$UPSTREAM_DIR/$UPSTREAM_GIT_DIR"
 fi
 
-BASE_FILE="$UPSTREAM_GIT_DIR/sidelady-base"
-MANIFEST_FILE="$UPSTREAM_GIT_DIR/sidelady-overlay-manifest"
+BASE_FILE="$UPSTREAM_GIT_DIR/superbird-base"
+LEGACY_BASE_FILE="$UPSTREAM_GIT_DIR/sidelady-base"
+MANIFEST_FILE="$UPSTREAM_GIT_DIR/superbird-overlay-manifest"
+LEGACY_MANIFEST_FILE="$UPSTREAM_GIT_DIR/sidelady-overlay-manifest"
 EXCLUDE_FILE="$UPSTREAM_GIT_DIR/info/exclude"
 
 TARGET_SHA="${1:-}"
@@ -19,6 +21,9 @@ if [[ -z "$TARGET_SHA" ]]; then
 fi
 if [[ -z "$TARGET_SHA" && -f "$BASE_FILE" ]]; then
     TARGET_SHA="$(cat "$BASE_FILE")"
+fi
+if [[ -z "$TARGET_SHA" && -f "$LEGACY_BASE_FILE" ]]; then
+    TARGET_SHA="$(cat "$LEGACY_BASE_FILE")"
 fi
 if [[ -z "$TARGET_SHA" ]]; then
     TARGET_SHA="$(git -C "$UPSTREAM_DIR" rev-parse HEAD)"
@@ -33,18 +38,21 @@ if [[ -d "$UPSTREAM_GIT_DIR/rebase-merge" ]]; then
 fi
 
 # Remove previously linked overlay files and empty directories created for them
-if [[ -f "$MANIFEST_FILE" ]]; then
-    while IFS= read -r rel; do
-        [[ -z "$rel" ]] && continue
-        rm -f "$UPSTREAM_DIR/$rel"
-        dir="$(dirname "$UPSTREAM_DIR/$rel")"
-        while [[ "$dir" != "$UPSTREAM_DIR" && -d "$dir" ]]; do
-            rmdir "$dir" 2>/dev/null || break
-            dir="$(dirname "$dir")"
-        done
-    done < "$MANIFEST_FILE"
-    rm -f "$MANIFEST_FILE"
-fi
+for manifest in "$MANIFEST_FILE" "$LEGACY_MANIFEST_FILE"; do
+    if [[ -f "$manifest" ]]; then
+        while IFS= read -r rel; do
+            [[ -z "$rel" ]] && continue
+            rm -f "$UPSTREAM_DIR/$rel"
+            dir="$(dirname "$UPSTREAM_DIR/$rel")"
+            while [[ "$dir" != "$UPSTREAM_DIR" && -d "$dir" ]]; do
+                rmdir "$dir" 2>/dev/null || break
+                dir="$(dirname "$dir")"
+            done
+        done < "$manifest"
+        rm -f "$manifest"
+    fi
+done
+rm -f "$LEGACY_BASE_FILE"
 
 # Remove managed exclude block
 if [[ -f "$EXCLUDE_FILE" ]]; then
@@ -56,10 +64,11 @@ with open(path, "r", encoding="utf-8") as f:
 out = []
 skip = False
 for line in lines:
-    if line.strip() == "# BEGIN SIDELADY OVERLAY":
+    stripped = line.strip()
+    if stripped in ("# BEGIN SUPERBIRD OVERLAY", "# BEGIN SIDELADY OVERLAY"):
         skip = True
         continue
-    if line.strip() == "# END SIDELADY OVERLAY":
+    if stripped in ("# END SUPERBIRD OVERLAY", "# END SIDELADY OVERLAY"):
         skip = False
         continue
     if not skip:
@@ -71,4 +80,5 @@ fi
 
 git -C "$UPSTREAM_DIR" reset --hard -q
 git -C "$UPSTREAM_DIR" checkout --detach -q "$TARGET_SHA"
+git -C "$UPSTREAM_DIR" branch -D superbird >/dev/null 2>&1 || true
 git -C "$UPSTREAM_DIR" branch -D sidelady >/dev/null 2>&1 || true

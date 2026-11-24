@@ -60,13 +60,23 @@ size_t ak_kmalloc_usable_size(void const* ptr) {
 EOF
 
 CXX="${CXX:-g++}"
-"$CXX" -std=c++23 -Wall -Wextra -Werror -Wno-literal-suffix -Wno-unused-parameter \
-    -I"$TMP_DIR" \
-    -I"$ROOT_DIR/overlay" \
-    -I"$ROOT_DIR/upstream" \
+COMMON_FLAGS=(-std=c++23 -Wall -Wextra -Werror -Wno-unused-parameter -I"$TMP_DIR" -I"$ROOT_DIR/overlay" -I"$ROOT_DIR/upstream")
+if "$CXX" --version 2>&1 | grep -qi clang; then
+    COMMON_FLAGS+=(-Wno-unqualified-std-cast-call -Wno-user-defined-literals -Wno-unknown-warning-option)
+else
+    COMMON_FLAGS+=(-Wno-literal-suffix)
+fi
+
+"$CXX" "${COMMON_FLAGS[@]}" \
     "$ROOT_DIR/tests/TestTreeTabModel.cpp" \
-    "$ROOT_DIR/overlay/UI/Qt/TreeTabs/TreeTabModel.cpp" \
+    "$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/TreeTabs/TreeTabModel.cpp" \
     "$TMP_DIR/ak_stubs.cpp" \
     -o "$TMP_DIR/test_tree_tab_model"
-
 "$TMP_DIR/test_tree_tab_model"
+
+"$CXX" "${COMMON_FLAGS[@]}" \
+    "$ROOT_DIR/tests/TestModuleRegistry.cpp" \
+    "$ROOT_DIR/overlay/UI/Qt/Superbird/Core/ModuleRegistry.cpp" \
+    "$TMP_DIR/ak_stubs.cpp" \
+    -o "$TMP_DIR/test_module_registry"
+"$TMP_DIR/test_module_registry"

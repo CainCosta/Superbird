@@ -9,7 +9,7 @@
 #include <AK/Optional.h>
 #include <AK/Vector.h>
 #include <AK/kmalloc.h>
-#include <UI/Qt/TreeTabs/TreeTabModel.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabModel.h>
 
 #include <QAbstractScrollArea>
 #include <QPoint>

@@ -12,8 +12,8 @@
 #include <UI/Qt/StringUtils.h>
 #include <UI/Qt/Tab.h>
 #include <UI/Qt/Theme.h>
-#include <UI/Qt/TreeTabs/TreeTabController.h>
-#include <UI/Qt/TreeTabs/TreeTabView.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabController.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabView.h>
 
 #include <QApplication>
 #include <QContextMenuEvent>
@@ -402,25 +402,33 @@ void TreeTabView::paint_tree_row(QPainter& painter, int row_index, QRect const& 
         return;
     }
 
-    // 2. Subtle vertical tree guide lines
+    // 2. Sidebery-style branch lines: one continuous vertical line per ancestor level, running under the
+    //    parent's chevron down the left of its whole visible subtree, inset where the branch starts and ends.
     auto clamped_depth = min(row.depth, TREE_MAX_VISUAL_DEPTH);
     if (clamped_depth > 0) {
-        auto guide_color = colors.separator;
-        guide_color.setAlphaF(Theme::is_dark(chrome_palette) ? 0.45 : 0.55);
-        painter.setPen(QPen(guide_color, 1.0));
+        static constexpr qreal BRANCH_LINE_WIDTH = 1.5;
+        static constexpr qreal BRANCH_LINE_END_INSET = 4.0;
+
+        auto previous_depth = row_index > 0 ? min(m_rows[static_cast<size_t>(row_index - 1)].depth, TREE_MAX_VISUAL_DEPTH) : 0uz;
+        auto next_index = static_cast<size_t>(row_index) + 1;
+        auto next_depth = next_index < m_rows.size() ? min(m_rows[next_index].depth, TREE_MAX_VISUAL_DEPTH) : 0uz;
+
+        auto line_color = colors.muted;
+        line_color.setAlphaF(Theme::is_dark(chrome_palette) ? 0.40 : 0.45);
+        painter.save();
+        painter.setPen(QPen(line_color, BRANCH_LINE_WIDTH, Qt::SolidLine, Qt::RoundCap));
         for (size_t d = 0; d < clamped_depth; ++d) {
-            bool draw_full = (d < 31) && ((row.guide_mask & (1u << d)) != 0);
-            bool is_direct_parent = (d + 1 == clamped_depth);
-            if (!draw_full && !is_direct_parent)
-                continue;
-            qreal guide_x = row_rect.left() + 6 + static_cast<int>(d) * TREE_INDENT_PER_LEVEL + (TREE_TWISTY_SIZE / 2.0);
-            qreal top_y = row_rect.top() - TREE_ROW_VERTICAL_GAP;
-            qreal bottom_y = (is_direct_parent && row.is_last_sibling) ? row_rect.center().y() : (row_rect.bottom() + TREE_ROW_VERTICAL_GAP);
-            painter.drawLine(QPointF(guide_x, top_y), QPointF(guide_x, bottom_y));
-            if (is_direct_parent) {
-                painter.drawLine(QPointF(guide_x, row_rect.center().y()), QPointF(guide_x + 7.0, row_rect.center().y()));
-            }
+            // The row directly above sits at this level only when it is the branch's parent.
+            bool starts_branch = previous_depth <= d;
+            // The branch ends when the next row climbs back out to this level or above.
+            bool ends_branch = next_depth <= d;
+
+            qreal line_x = row_rect.left() + 6 + static_cast<int>(d) * TREE_INDENT_PER_LEVEL + (TREE_TWISTY_SIZE / 2.0);
+            qreal top_y = starts_branch ? row_rect.top() + 1.0 : row_rect.top() - TREE_ROW_VERTICAL_GAP;
+            qreal bottom_y = ends_branch ? row_rect.bottom() - BRANCH_LINE_END_INSET : row_rect.bottom() + TREE_ROW_VERTICAL_GAP;
+            painter.drawLine(QPointF(line_x, top_y), QPointF(line_x, bottom_y));
         }
+        painter.restore();
     }
 
     // 3. Twisty chevron for parent tabs

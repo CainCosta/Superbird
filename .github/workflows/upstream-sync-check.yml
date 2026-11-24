@@ -9,7 +9,7 @@ jobs:
   check-patches:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Sidelady
+      - name: Checkout Superbird
         uses: actions/checkout@v4
         with:
           submodules: true
@@ -17,7 +17,7 @@ jobs:
 
       - name: Fetch latest Ladybird master & test patch stack
         run: |
-          git -C upstream config user.name "Sidelady CI"
-          git -C upstream config user.email "ci@sidelady.local"
+          git -C upstream config user.name "Superbird CI"
+          git -C upstream config user.email "ci@superbird.local"
           ./scripts/sync-upstream.sh
-          git -C upstream diff --stat "$(cat "$(git -C upstream rev-parse --git-dir)/sidelady-base")..HEAD"
+          git -C upstream diff --stat "$(cat "$(git -C upstream rev-parse --git-dir)/superbird-base")..HEAD"

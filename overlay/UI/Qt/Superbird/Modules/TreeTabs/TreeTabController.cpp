@@ -14,9 +14,12 @@
 #include <UI/Qt/StringUtils.h>
 #include <UI/Qt/Tab.h>
 #include <UI/Qt/TabBar.h>
-#include <UI/Qt/TreeTabs/TreeTabController.h>
-#include <UI/Qt/TreeTabs/TreeTabStore.h>
-#include <UI/Qt/TreeTabs/TreeTabView.h>
+#include <UI/Qt/Superbird/Core/ModuleRegistry.h>
+#include <UI/Qt/Superbird/Core/WindowHost.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabController.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabStore.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabView.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabsModule.h>
 
 #include <QMenu>
 #include <QMessageBox>
@@ -51,6 +54,8 @@ TreeTabView* TreeTabController::view() const
 
 bool TreeTabController::is_enabled() const
 {
+    if (!Superbird::ModuleRegistry::the().is_enabled(Superbird::TreeTabsModule::MODULE_ID))
+        return false;
     auto const& settings = Application::settings().tab_settings();
     return settings.vertical_tabs_enabled && settings.tree_tabs_enabled;
 }
@@ -553,28 +558,30 @@ void TreeTabController::transfer_subtree_topology(
     HashMap<Tab const*, Tab*> const& parent_map,
     HashMap<Tab const*, bool> const& collapsed_map)
 {
-    auto& target_controller = target_window.tree_tab_controller();
+    auto* target_controller = target_window.superbird().tree_tab_controller();
+    if (!target_controller)
+        return;
     for (auto* tab : moved_tabs) {
-        auto node_id = target_controller.m_model.node_id_for_tab(tab);
+        auto node_id = target_controller->m_model.node_id_for_tab(tab);
         if (!node_id.has_value())
             continue;
         if (auto parent_tab = parent_map.get(tab); parent_tab.has_value()) {
-            if (auto parent_node_id = target_controller.m_model.node_id_for_tab(*parent_tab); parent_node_id.has_value()) {
-                auto const* parent_node = target_controller.m_model.node(*parent_node_id);
-                target_controller.m_model.move_node(*node_id, *parent_node_id, parent_node ? parent_node->children.size() : 0, true);
+            if (auto parent_node_id = target_controller->m_model.node_id_for_tab(*parent_tab); parent_node_id.has_value()) {
+                auto const* parent_node = target_controller->m_model.node(*parent_node_id);
+                target_controller->m_model.move_node(*node_id, *parent_node_id, parent_node ? parent_node->children.size() : 0, true);
             }
         }
     }
     for (auto* tab : moved_tabs) {
-        auto node_id = target_controller.m_model.node_id_for_tab(tab);
+        auto node_id = target_controller->m_model.node_id_for_tab(tab);
         if (!node_id.has_value())
             continue;
         if (auto collapsed = collapsed_map.get(tab); collapsed.has_value() && *collapsed)
-            target_controller.m_model.set_collapsed(*node_id, true, false);
+            target_controller->m_model.set_collapsed(*node_id, true, false);
     }
-    target_controller.sync_flat_tab_order();
-    target_controller.schedule_persist();
-    target_controller.refresh_view();
+    target_controller->sync_flat_tab_order();
+    target_controller->schedule_persist();
+    target_controller->refresh_view();
 }
 
 void TreeTabController::indent_tab(Tab& tab)

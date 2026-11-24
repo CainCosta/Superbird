@@ -5,16 +5,16 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UPSTREAM_DIR="$ROOT_DIR/upstream"
 TARGET_REF="${1:-origin/master}"
 
-echo "[sidelady] Fetching upstream..."
+echo "[superbird] Fetching upstream..."
 git -C "$UPSTREAM_DIR" fetch --depth 1 origin master
 
 NEW_SHA="$(git -C "$UPSTREAM_DIR" rev-parse "$TARGET_REF")"
-echo "[sidelady] Testing patches against upstream ${NEW_SHA:0:12} ($TARGET_REF)..."
+echo "[superbird] Testing patches against upstream ${NEW_SHA:0:12} ($TARGET_REF)..."
 
-SIDELADY_BASE_SHA="$NEW_SHA" "$ROOT_DIR/scripts/apply.sh"
+SUPERBIRD_BASE_SHA="$NEW_SHA" "$ROOT_DIR/scripts/apply.sh"
 
 echo ""
-echo "[sidelady] All patches applied cleanly on ${NEW_SHA:0:12}!"
+echo "[superbird] All patches applied cleanly on ${NEW_SHA:0:12}!"
 echo "Next steps:"
 echo "  1. Build and test:  ./scripts/build.sh Release"
 echo "  2. If patches needed adjustment, run: ./scripts/export-patches.sh"

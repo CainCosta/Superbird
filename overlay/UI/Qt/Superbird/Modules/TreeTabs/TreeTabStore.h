@@ -16,7 +16,7 @@
 #include <AK/kmalloc.h>
 #include <LibDatabase/Database.h>
 #include <UI/Qt/SessionStore.h>
-#include <UI/Qt/TreeTabs/TreeTabModel.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabModel.h>
 
 namespace Ladybird {
 

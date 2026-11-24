@@ -7,7 +7,7 @@
 #include <AK/Array.h>
 #include <AK/Format.h>
 #include <LibDatabase/ResultRow.h>
-#include <UI/Qt/TreeTabs/TreeTabStore.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabStore.h>
 
 namespace Ladybird {
 
@@ -47,7 +47,7 @@ ErrorOr<NonnullOwnPtr<TreeTabStore>> TreeTabStore::create(ByteString const& data
     });
 
     if (TRY(database->migrate(TREE_TAB_STORE_NAME, migrations)) != Database::MigrationOutcome::Success)
-        return Error::from_string_literal("TreeTabs database was created by a newer Sidelady version");
+        return Error::from_string_literal("TreeTabs database was created by a newer Superbird version");
 
     Statements statements {};
     statements.select_all = TRY(database->prepare_statement("SELECT session_tab_id, parent_session_tab_id, collapsed FROM TreeTabNodes;"sv));
