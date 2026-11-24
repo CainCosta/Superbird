@@ -187,18 +187,19 @@ jobs:
           export SCCACHE_DIR="$PWD/.sccache"
           cmake --build Build --target ladybird_impl
 
-      - name: Build full macOS bundle
+      - name: Build & install full macOS bundle
         working-directory: upstream
         shell: bash
-        env:
-          CCACHE_COMPILERCHECK: "%compiler% -v"
-          SCCACHE_CACHE_SIZE: 1G
-          SCCACHE_IDLE_TIMEOUT: "0"
         run: |
           export CCACHE_DIR="$PWD/.ccache"
           export SCCACHE_DIR="$PWD/.sccache"
           cmake --build Build --target sign_ladybird_bundle
+          cmake --install Build --strip --component ladybird_Runtime --prefix "$PWD/../Install"
           ccache -s
+        env:
+          CCACHE_COMPILERCHECK: "%compiler% -v"
+          SCCACHE_CACHE_SIZE: 1G
+          SCCACHE_IDLE_TIMEOUT: "0"
 
       - name: Stop sccache & prune ccache before saving
         if: always()
@@ -226,24 +227,101 @@ jobs:
             upstream/.sccache
           key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
 
-      - name: Package macOS app bundle
-        working-directory: upstream/Build
+      - name: Re-sign & package portable macOS app bundle
         shell: bash
         run: |
-          mkdir -p packages
-          APP_PATH="$(find . -maxdepth 4 -name 'Ladybird.app' -type d | head -n 1)"
-          if [[ -z "$APP_PATH" ]]; then
-            echo "Error: Ladybird.app not found!" >&2
+          set -euo pipefail
+          APP_PATH="$PWD/Install/bundle/Ladybird.app"
+          if [[ ! -d "$APP_PATH" ]]; then
+            echo "Error: Installed Ladybird.app not found at $APP_PATH!" >&2
             exit 1
           fi
+
+          # Strip build-tree rpaths from bundled dylibs/plugins and re-sign inside-out
+          # after `cmake --install --strip` invalidated the build-time ad-hoc signatures.
+          python3 - "$APP_PATH" "$PWD/upstream/Build" "$PWD/upstream/Meta/Entitlements.plist" <<'PY'
+          import os, subprocess, sys
+          from pathlib import Path
+
+          app = Path(sys.argv[1])
+          build_dir = Path(sys.argv[2])
+          main_entitlements = Path(sys.argv[3])
+          macho_magics = (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca")
+
+          def is_macho(p: Path) -> bool:
+              if p.is_symlink() or not p.is_file():
+                  return False
+              with p.open("rb") as f:
+                  return f.read(4) in macho_magics
+
+          def rpaths(p: Path) -> list[str]:
+              out = subprocess.check_output(["otool", "-l", str(p)], text=True)
+              res, flag = [], False
+              for line in out.splitlines():
+                  s = line.strip()
+                  if s == "cmd LC_RPATH":
+                      flag = True
+                  elif flag and s.startswith("path "):
+                      res.append(s[len("path "):].split(" (offset")[0])
+                      flag = False
+              return res
+
+          contents = app / "Contents"
+          for subdir in ("lib", "PlugIns", "Frameworks"):
+              d = contents / subdir
+              if not d.is_dir():
+                  continue
+              for p in sorted(d.rglob("*")):
+                  if not is_macho(p):
+                      continue
+                  p.chmod(p.stat().st_mode | 0o200)
+                  for rp in rpaths(p):
+                      if rp.startswith("/"):
+                          subprocess.run(["install_name_tool", "-delete_rpath", rp, str(p)], check=True)
+                  subprocess.run(["codesign", "--sign", "-", "--force", str(p)], check=True)
+
+          macos_dir = contents / "MacOS"
+          main_bin = macos_dir / "Ladybird"
+          for exe in sorted(macos_dir.iterdir()):
+              if not is_macho(exe):
+                  continue
+              exe.chmod(exe.stat().st_mode | 0o200)
+              for rp in rpaths(exe):
+                  if rp.startswith("/"):
+                      subprocess.run(["install_name_tool", "-delete_rpath", rp, str(exe)], check=True)
+              if "@executable_path/../lib" not in rpaths(exe):
+                  subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/../lib", str(exe)], check=True)
+              if exe == main_bin:
+                  continue
+              cmd = ["codesign", "--sign", "-", "--force"]
+              ent = next(build_dir.glob(f"Services/**/{exe.name}.entitlements"), None)
+              if ent is not None and ent.is_file():
+                  cmd += ["--options", "runtime", "--entitlements", str(ent)]
+              subprocess.run([*cmd, str(exe)], check=True)
+
+          subprocess.run(["codesign", "--sign", "-", "--force", "--entitlements", str(main_entitlements), str(app)], check=True)
+
+          for subdir in ("MacOS", "lib", "PlugIns", "Frameworks"):
+              d = contents / subdir
+              if not d.is_dir():
+                  continue
+              for p in sorted(d.rglob("*")):
+                  if is_macho(p):
+                      subprocess.run(["codesign", "--verify", str(p)], check=True)
+          subprocess.run(["codesign", "--verify", str(app)], check=True)
+          print(f"Verified portable macOS bundle signatures for {app}")
+          PY
+
+          mkdir -p packages
           echo "Packaging $APP_PATH..."
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" packages/Sidelady-macOS-arm64.zip
+          ls -lh packages/Sidelady-macOS-arm64.zip
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: Sidelady-macOS-arm64
-          path: upstream/Build/packages/Sidelady-macOS-arm64.zip
+          path: packages/Sidelady-macOS-arm64.zip
           if-no-files-found: error
 
   build-linux:
@@ -361,7 +439,7 @@ jobs:
           export SCCACHE_DIR="$PWD/.sccache"
           cmake --build Build --target ladybird_impl
 
-      - name: Build full Linux bundle
+      - name: Build & install full Linux bundle
         working-directory: upstream
         shell: bash
         env:
@@ -371,8 +449,8 @@ jobs:
         run: |
           export CCACHE_DIR="$PWD/.ccache"
           export SCCACHE_DIR="$PWD/.sccache"
-          cmake --build Build --target ladybird
-          cmake --install Build --strip --prefix "$PWD/../Install"
+          cmake --build Build --target ladybird WebDriver
+          cmake --install Build --strip --component ladybird_Runtime --prefix "$PWD/../Install"
           ccache -s
 
       - name: Stop sccache & prune ccache before saving
@@ -406,8 +484,14 @@ jobs:
       - name: Package Linux archive
         shell: bash
         run: |
+          set -euo pipefail
+          if [[ ! -x "$PWD/Install/bin/Ladybird" ]]; then
+            echo "Error: Installed Ladybird binary not found at $PWD/Install/bin/Ladybird!" >&2
+            exit 1
+          fi
           mkdir -p packages
           tar -C "$PWD/Install" -cJf packages/Sidelady-Linux-x86_64.tar.xz .
+          ls -lh packages/Sidelady-Linux-x86_64.tar.xz
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
