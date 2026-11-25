@@ -33,6 +33,8 @@ std::vector<Palette::Entry> collect_action_entries(ModuleRegistry const& registr
 {
     std::vector<Palette::Entry> entries;
     for (auto const* action : registry.matching_actions()) {
+        if (action->id == COMMAND_PALETTE_OPEN_ACTION_ID)
+            continue;
         entries.push_back({
             .kind = Palette::EntryKind::Action,
             .title = to_std_string(action->title),

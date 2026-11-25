@@ -19,7 +19,6 @@
 #include <QString>
 
 class QAction;
-class QShortcut;
 
 namespace Ladybird {
 class BrowserWindow;
@@ -48,6 +47,7 @@ public:
     virtual StringView id() const override { return MODULE_ID; }
 
     virtual void on_enabled_changed(bool enabled) override;
+    virtual void on_settings_changed() override;
     virtual void on_chrome_style_changed() override;
     virtual void on_tab_added(Ladybird::Tab&) override;
     virtual void on_tab_removed(Ladybird::Tab&) override;
@@ -94,7 +94,6 @@ private:
 
     Ladybird::BrowserWindow& m_window;
     HashMap<Ladybird::Tab*, NonnullOwnPtr<TabState>> m_tabs;
-    QPointer<QShortcut> m_shortcut;
 };
 
 }

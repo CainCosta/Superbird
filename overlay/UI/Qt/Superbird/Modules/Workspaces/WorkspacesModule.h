@@ -18,7 +18,6 @@
 class QAction;
 class QMenu;
 class QObject;
-class QShortcut;
 class QTimer;
 
 namespace Ladybird {
@@ -110,7 +109,6 @@ private:
     QPointer<WorkspacePicker> m_picker;
     HashMap<Ladybird::Tab*, QPointer<QAction>> m_pill_actions;
     HashMap<Ladybird::Tab*, QPointer<QMenu>> m_tab_menus;
-    Vector<QPointer<QShortcut>> m_shortcuts;
     QPointer<QTimer> m_persist_timer;
     QPointer<QObject> m_activation_watcher;
 };

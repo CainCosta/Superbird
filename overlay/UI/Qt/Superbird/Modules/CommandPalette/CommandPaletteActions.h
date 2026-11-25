@@ -19,6 +19,8 @@ namespace Superbird {
 class ModuleRegistry;
 
 inline constexpr StringView COMMAND_PALETTE_MODULE_ID = "command_palette"sv;
+// Opens the palette. It's on the bus for its shortcut and left out of the palette's own results.
+inline constexpr StringView COMMAND_PALETTE_OPEN_ACTION_ID = "command_palette.open"sv;
 
 // Everyday browser commands the Command Palette offers next to the modules' own actions. They go on the
 // ModuleRegistry bus under the palette's module id, so they disappear along with the palette when it is disabled.

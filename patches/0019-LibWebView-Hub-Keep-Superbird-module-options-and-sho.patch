@@ -1,0 +1,262 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 14:38:46 -0600
+Subject: [PATCH] LibWebView+Hub: Keep Superbird module options and shortcuts
+ in settings
+
+Modules describe the options and shortcuts they offer as a JSON schema
+when they register, and about:settings sets them through two new
+interfaces. Values persist under the superbird settings key.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+diff --git a/Libraries/LibWebView/Settings.cpp b/Libraries/LibWebView/Settings.cpp
+index 32c8be3d..834d97fb 100644
+--- a/Libraries/LibWebView/Settings.cpp
++++ b/Libraries/LibWebView/Settings.cpp
+@@ -70,6 +70,8 @@ static constexpr auto TAB_PROCESSES_KEY = "tabProcesses"sv;
+ 
+ static constexpr auto SUPERBIRD_SETTINGS_KEY = "superbird"sv;
+ static constexpr auto SUPERBIRD_MODULES_KEY = "modules"sv;
++static constexpr auto SUPERBIRD_OPTIONS_KEY = "options"sv;
++static constexpr auto SUPERBIRD_SHORTCUTS_KEY = "shortcuts"sv;
+ 
+ static constexpr auto BROWSING_BEHAVIOR_KEY = "browsingBehavior"sv;
+ static constexpr auto ENABLE_AUTOSCROLL_KEY = "enableAutoscroll"sv;
+@@ -946,6 +948,18 @@ JsonValue Settings::serialize_json() const
+         superbird_modules.set(module_id, enabled);
+     JsonObject superbird_settings;
+     superbird_settings.set(SUPERBIRD_MODULES_KEY, move(superbird_modules));
++    JsonObject superbird_options;
++    for (auto const& [module_id, options] : m_superbird_settings.module_options) {
++        JsonObject module_options;
++        for (auto const& [option_id, value] : options)
++            module_options.set(option_id, value);
++        superbird_options.set(module_id, move(module_options));
++    }
++    superbird_settings.set(SUPERBIRD_OPTIONS_KEY, move(superbird_options));
++    JsonObject superbird_shortcuts;
++    for (auto const& [command_id, shortcut] : m_superbird_settings.shortcuts)
++        superbird_shortcuts.set(command_id, shortcut);
++    superbird_settings.set(SUPERBIRD_SHORTCUTS_KEY, move(superbird_shortcuts));
+     settings.set(SUPERBIRD_SETTINGS_KEY, move(superbird_settings));
+ 
+     JsonObject browsing_behavior;
+@@ -1412,6 +1426,24 @@ SuperbirdSettings Settings::parse_superbird_settings(JsonValue const& settings)
+                 superbird_settings.enabled_modules.set(key, value.as_bool());
+         });
+     }
++    if (auto options = settings.as_object().get_object(SUPERBIRD_OPTIONS_KEY); options.has_value()) {
++        options->for_each_member([&](auto const& module_id, auto const& module_options) {
++            if (module_id.is_empty() || !module_options.is_object())
++                return;
++            HashMap<String, String> values;
++            module_options.as_object().for_each_member([&](auto const& option_id, auto const& value) {
++                if (!option_id.is_empty() && value.is_string())
++                    values.set(option_id, value.as_string());
++            });
++            superbird_settings.module_options.set(module_id, move(values));
++        });
++    }
++    if (auto shortcuts = settings.as_object().get_object(SUPERBIRD_SHORTCUTS_KEY); shortcuts.has_value()) {
++        shortcuts->for_each_member([&](auto const& command_id, auto const& value) {
++            if (!command_id.is_empty() && value.is_string())
++                superbird_settings.shortcuts.set(command_id, value.as_string());
++        });
++    }
+     return superbird_settings;
+ }
+ 
+@@ -1436,6 +1468,34 @@ void Settings::set_superbird_module_enabled(String const& module_id, bool enable
+         observer.superbird_settings_changed();
+ }
+ 
++void Settings::set_superbird_module_option(String const& module_id, String const& option_id, String value)
++{
++    if (module_id.is_empty() || option_id.is_empty())
++        return;
++
++    auto& options = m_superbird_settings.module_options.ensure(module_id);
++    options.set(option_id, move(value));
++    persist_settings();
++
++    for (auto& observer : m_observers)
++        observer.superbird_settings_changed();
++}
++
++void Settings::set_superbird_shortcut(String const& command_id, Optional<String> shortcut)
++{
++    if (command_id.is_empty())
++        return;
++
++    if (shortcut.has_value())
++        m_superbird_settings.shortcuts.set(command_id, shortcut.release_value());
++    else
++        m_superbird_settings.shortcuts.remove(command_id);
++    persist_settings();
++
++    for (auto& observer : m_observers)
++        observer.superbird_settings_changed();
++}
++
+ void Settings::register_superbird_module(SuperbirdModuleDescriptor module)
+ {
+     if (module.id.is_empty())
+diff --git a/Libraries/LibWebView/Settings.h b/Libraries/LibWebView/Settings.h
+index db75b81e..ba054c0b 100644
+--- a/Libraries/LibWebView/Settings.h
++++ b/Libraries/LibWebView/Settings.h
+@@ -130,6 +130,10 @@ struct TabSettings {
+ 
+ struct SuperbirdSettings {
+     HashMap<String, bool> enabled_modules;
++    // The options modules offer in about:settings, by module and option id, as text (a switch is "true" or "false").
++    HashMap<String, HashMap<String, String>> module_options;
++    // Shortcuts picked for Superbird commands, by command id, as Qt's portable key sequence text ("" for none).
++    HashMap<String, String> shortcuts;
+ };
+ 
+ // A Superbird module compiled into this build, as the UI registers it for about:settings to list.
+@@ -138,6 +142,8 @@ struct SuperbirdModuleDescriptor {
+     String name;
+     String description;
+     bool enabled_by_default { true };
++    // JSON describing the options and shortcuts the module offers, for about:settings to draw.
++    String settings_schema;
+ };
+ 
+ struct SearchEngineSettings {
+@@ -358,6 +364,9 @@ public:
+     SuperbirdSettings const& superbird_settings() const { return m_superbird_settings; }
+     void set_superbird_settings(SuperbirdSettings);
+     void set_superbird_module_enabled(String const& module_id, bool enabled);
++    void set_superbird_module_option(String const& module_id, String const& option_id, String value);
++    // Nothing goes back to the command's default shortcut.
++    void set_superbird_shortcut(String const& command_id, Optional<String> shortcut);
+     void register_superbird_module(SuperbirdModuleDescriptor);
+     Vector<SuperbirdModuleDescriptor> const& superbird_modules() const { return m_superbird_modules; }
+ 
+diff --git a/Libraries/LibWebView/WebUI/SettingsUI.cpp b/Libraries/LibWebView/WebUI/SettingsUI.cpp
+index 022239b4..2c026da2 100644
+--- a/Libraries/LibWebView/WebUI/SettingsUI.cpp
++++ b/Libraries/LibWebView/WebUI/SettingsUI.cpp
+@@ -101,6 +101,12 @@ void SettingsUI::register_interfaces()
+     register_interface("setSuperbirdModuleEnabled"sv, [this](auto const& data) {
+         set_superbird_module_enabled(data);
+     });
++    register_interface("setSuperbirdModuleOption"sv, [this](auto const& data) {
++        set_superbird_module_option(data);
++    });
++    register_interface("setSuperbirdShortcut"sv, [this](auto const& data) {
++        set_superbird_shortcut(data);
++    });
+     register_interface("setSearchEngineSettings"sv, [this](auto const& data) {
+         set_search_engine_settings(data);
+     });
+@@ -246,6 +252,10 @@ void SettingsUI::load_features()
+         module_info.set("name"_string, module.name);
+         module_info.set("description"_string, module.description);
+         module_info.set("enabledByDefault"_string, module.enabled_by_default);
++        if (!module.settings_schema.is_empty()) {
++            if (auto schema = JsonValue::from_string(module.settings_schema); !schema.is_error() && schema.value().is_object())
++                module_info.set("settings"_string, schema.release_value());
++        }
+         superbird_modules.must_append(move(module_info));
+     }
+     features.set("superbirdModules"_string, move(superbird_modules));
+@@ -507,6 +517,36 @@ void SettingsUI::set_superbird_module_enabled(JsonValue const& data)
+     Application::settings().set_superbird_module_enabled(*id, *enabled);
+ }
+ 
++void SettingsUI::set_superbird_module_option(JsonValue const& data)
++{
++    if (!data.is_object())
++        return;
++
++    auto module_id = data.as_object().get_string("module"sv);
++    auto option_id = data.as_object().get_string("option"sv);
++    auto value = data.as_object().get_string("value"sv);
++    if (!module_id.has_value() || module_id->is_empty() || !option_id.has_value() || option_id->is_empty() || !value.has_value())
++        return;
++
++    Application::settings().set_superbird_module_option(*module_id, *option_id, *value);
++}
++
++void SettingsUI::set_superbird_shortcut(JsonValue const& data)
++{
++    if (!data.is_object())
++        return;
++
++    auto command_id = data.as_object().get_string("command"sv);
++    if (!command_id.has_value() || command_id->is_empty())
++        return;
++
++    // A missing or null shortcut resets the command to its default; an empty one leaves it with none.
++    Optional<String> shortcut;
++    if (auto value = data.as_object().get_string("shortcut"sv); value.has_value())
++        shortcut = *value;
++    Application::settings().set_superbird_shortcut(*command_id, move(shortcut));
++}
++
+ void SettingsUI::set_browsing_behavior(JsonValue const& browsing_behavior)
+ {
+     auto parsed_browsing_behavior = Settings::parse_browsing_behavior(browsing_behavior);
+diff --git a/Libraries/LibWebView/WebUI/SettingsUI.h b/Libraries/LibWebView/WebUI/SettingsUI.h
+index fdf7d508..55623efb 100644
+--- a/Libraries/LibWebView/WebUI/SettingsUI.h
++++ b/Libraries/LibWebView/WebUI/SettingsUI.h
+@@ -81,6 +81,8 @@ private:
+     void reset_host_setting(JsonValue const&);
+     void set_tab_settings(JsonValue const&);
+     void set_superbird_module_enabled(JsonValue const&);
++    void set_superbird_module_option(JsonValue const&);
++    void set_superbird_shortcut(JsonValue const&);
+     void set_browsing_behavior(JsonValue const&);
+     void set_config_variable(JsonValue const&);
+ 
+diff --git a/Services/Hub/ConnectionFromUI.cpp b/Services/Hub/ConnectionFromUI.cpp
+index fd9c7b24..9e3325c0 100644
+--- a/Services/Hub/ConnectionFromUI.cpp
++++ b/Services/Hub/ConnectionFromUI.cpp
+@@ -955,13 +955,14 @@ void ConnectionFromUI::update_settings(u64 change_id, ByteString changes_json)
+ }
+ 
+ // The UI compiles Superbird's modules in, and tells this process, which serves about:settings, which ones it has.
+-void ConnectionFromUI::register_superbird_module(String id, String name, String description, bool enabled_by_default)
++void ConnectionFromUI::register_superbird_module(String id, String name, String description, bool enabled_by_default, String settings_schema)
+ {
+     Application::settings().register_superbird_module({
+         .id = move(id),
+         .name = move(name),
+         .description = move(description),
+         .enabled_by_default = enabled_by_default,
++        .settings_schema = move(settings_schema),
+     });
+ }
+ 
+diff --git a/Services/Hub/ConnectionFromUI.h b/Services/Hub/ConnectionFromUI.h
+index 31d2f159..e581de7e 100644
+--- a/Services/Hub/ConnectionFromUI.h
++++ b/Services/Hub/ConnectionFromUI.h
+@@ -118,7 +118,7 @@ private:
+     virtual void view_request_close_preflight(u64 view_id, u64 request_id) override;
+     virtual void view_request_page_dumps(u64 view_id, u64 request_id) override;
+     virtual void view_request_reader_document(u64 view_id, u64 request_id) override;
+-    virtual void register_superbird_module(String id, String name, String description, bool enabled_by_default) override;
++    virtual void register_superbird_module(String id, String name, String description, bool enabled_by_default, String settings_schema) override;
+     virtual void request_platform_features_description(u64 request_id) override;
+     virtual void view_prepare_for_immediate_close(u64 view_id) override;
+     virtual void view_prepare_for_close_without_prompting(u64 view_id, u64 close_id) override;
+diff --git a/Services/Hub/HubServer.ipc b/Services/Hub/HubServer.ipc
+index 25a394a1..d5656e08 100644
+--- a/Services/Hub/HubServer.ipc
++++ b/Services/Hub/HubServer.ipc
+@@ -243,7 +243,7 @@ endpoint HubServer
+     answer_clipboard_item(u64 request_id, Web::Clipboard::SystemClipboardItem item) =|
+     answer_download_path(u64 request_id, Optional<ByteString> path) =|
+     update_settings(u64 change_id, ByteString changes_json) =|
+-    register_superbird_module(String id, String name, String description, bool enabled_by_default) =|
++    register_superbird_module(String id, String name, String description, bool enabled_by_default, String settings_schema) =|
+     view_answer(u64 view_id, u64 answer_id, bool answer) =|
+     view_answer_permission_request(u64 view_id, u64 answer_id, Web::Permissions::PromptOutcome outcome) =|
+     destroy_view(u64 view_id) =|

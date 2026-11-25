@@ -117,6 +117,15 @@ bool ModuleRegistry::matches_query(ActionDescriptor const& action, StringView qu
         || contains_ascii_case_insensitive(action.id, query);
 }
 
+ActionDescriptor const* ModuleRegistry::action(StringView id) const
+{
+    for (auto const& action : m_actions) {
+        if (action.id == id)
+            return &action;
+    }
+    return nullptr;
+}
+
 Vector<ActionDescriptor const*> ModuleRegistry::matching_actions(Optional<StringView> query) const
 {
     Vector<ActionDescriptor const*> matches;

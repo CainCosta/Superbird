@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <AK/Array.h>
 #include <UI/Qt/Application.h>
 #include <UI/Qt/StringUtils.h>
 #include <UI/Qt/BrowserWindow.h>
@@ -24,6 +25,16 @@
 
 namespace Superbird {
 
+static constexpr Array<ModuleShortcut, 7> SHORTCUTS { {
+    { .command_id = "tree_tabs.new_child_tab"sv, .title = "New child tab"sv },
+    { .command_id = "tree_tabs.filter"sv, .title = "Filter tabs in the sidebar"sv },
+    { .command_id = "tree_tabs.toggle_branch"sv, .title = "Collapse or expand the current branch"sv },
+    { .command_id = "tree_tabs.indent_tab"sv, .title = "Indent the current tab"sv },
+    { .command_id = "tree_tabs.outdent_tab"sv, .title = "Outdent the current tab"sv },
+    { .command_id = "tree_tabs.close_branch"sv, .title = "Close the current branch"sv },
+    { .command_id = "tree_tabs.toggle_mode"sv, .title = "Toggle tree-style tabs"sv },
+} };
+
 ModuleInfo TreeTabsModule::module_info()
 {
     return {
@@ -31,6 +42,7 @@ ModuleInfo TreeTabsModule::module_info()
         .name = "Tree-Style Tabs"sv,
         .description = "Organize vertical sidebar tabs into collapsible parent/child trees with drag-and-drop nesting and branch actions."sv,
         .enabled_by_default = true,
+        .shortcuts = SHORTCUTS.span(),
     };
 }
 

@@ -4,6 +4,7 @@ target_sources(ladybird_impl PRIVATE
     Superbird/Core/Confirm.h
     Superbird/Core/Module.h
     Superbird/Core/ModuleRegistry.cpp
+    Superbird/Core/ModuleSettings.cpp
     Superbird/Core/ModuleRegistry.h
     Superbird/Core/WindowHost.cpp
     Superbird/Core/WindowHost.h

@@ -20,8 +20,6 @@
 
 #include <vector>
 
-class QShortcut;
-
 namespace Ladybird {
 class BrowserWindow;
 class Tab;
@@ -61,8 +59,6 @@ private:
         QPointer<Ladybird::Tab> tab;
     };
 
-    void install_shortcuts();
-    void remove_shortcuts();
     void gather_base_entries();
     void update_results(QString const& query);
     enum class OpenIn : u8 {
@@ -74,7 +70,6 @@ private:
     void navigate_current_tab(QString const& input);
 
     Ladybird::BrowserWindow& m_window;
-    Vector<QPointer<QShortcut>> m_shortcuts;
     QPointer<CommandPalettePopover> m_popover;
 
     // Tabs, bookmarks and actions, gathered when the palette opens.
@@ -86,7 +81,6 @@ private:
     Vector<Target> m_row_targets;
     QString m_calculator_result;
     HashMap<String, QIcon> m_favicon_cache;
-    QPointer<QObject> m_shortcut_priority_filter;
 };
 
 }

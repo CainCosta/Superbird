@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <AK/Array.h>
 #include <UI/Qt/Application.h>
 #include <UI/Qt/BrowserWindow.h>
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
@@ -160,6 +161,24 @@ private:
 
 }
 
+static constexpr StringView EDGE_DROP_OPTION = "edge_drop"sv;
+
+static constexpr Array<ModuleOption, 1> OPTIONS { {
+    { .id = EDGE_DROP_OPTION, .label = "Split by dropping a tab at the page's edge"sv, .description = "Drag a tab from the tab bar onto the page to split with it."sv },
+} };
+
+static constexpr Array<ModuleShortcut, 9> SHORTCUTS { {
+    { .command_id = "split_view.side_by_side"sv, .title = "Split side by side"sv },
+    { .command_id = "split_view.stacked"sv, .title = "Split stacked"sv },
+    { .command_id = "split_view.grid"sv, .title = "Split into a grid of four tabs"sv },
+    { .command_id = "split_view.add_next_tab"sv, .title = "Add the next tab to the split"sv },
+    { .command_id = "split_view.focus_next_pane"sv, .title = "Focus the next pane"sv },
+    { .command_id = "split_view.swap"sv, .title = "Swap panes"sv },
+    { .command_id = "split_view.toggle_orientation"sv, .title = "Rotate"sv },
+    { .command_id = "split_view.equalize"sv, .title = "Equal sizes"sv },
+    { .command_id = "split_view.unsplit"sv, .title = "Unsplit"sv },
+} };
+
 ModuleInfo SplitViewModule::module_info()
 {
     return {
@@ -167,6 +186,8 @@ ModuleInfo SplitViewModule::module_info()
         .name = "Split View"sv,
         .description = "Tile two to four tabs side by side, stacked or in a grid. Split from a tab's menu, the Command Palette, or by dropping a tab at the page's edge."sv,
         .enabled_by_default = true,
+        .options = OPTIONS.span(),
+        .shortcuts = SHORTCUTS.span(),
     };
 }
 
@@ -604,7 +625,7 @@ void SplitViewModule::update_tab_context_menu(Ladybird::Tab& tab)
 
 std::optional<SplitViewModule::DropTarget> SplitViewModule::drop_target_at(Ladybird::Tab& tab, QPoint global_position)
 {
-    if (!is_enabled() || m_window.tab_index(&tab) < 0)
+    if (!is_enabled() || m_window.tab_index(&tab) < 0 || !WindowHost::module_option_is_on(MODULE_ID, EDGE_DROP_OPTION))
         return {};
     QWidget* page = m_host ? static_cast<QWidget*>(m_host.data()) : nullptr;
     auto* current = m_window.current_tab();

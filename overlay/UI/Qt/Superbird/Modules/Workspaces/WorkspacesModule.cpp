@@ -5,6 +5,7 @@
  */
 
 #include <AK/Platform.h>
+#include <AK/Array.h>
 #include <UI/Qt/Application.h>
 #include <UI/Qt/BrowserWindow.h>
 #include <UI/Qt/Icon.h>
@@ -27,21 +28,30 @@
 #include <QAction>
 #include <QCursor>
 #include <QEvent>
-#include <QKeySequence>
 #include <QMenu>
-#include <QShortcut>
 #include <QTimer>
 
 namespace Superbird {
 
 static constexpr int PERSIST_DELAY_MS = 500;
 
-static QKeySequence switch_shortcut(size_t slot)
-{
-    // NB: Qt::CTRL is the Command key on macOS. The window gives Cmd/Ctrl+1-9 to workspaces while this module is on, and
-    //     selects tabs by number with Cmd/Ctrl+Shift+1-9.
-    return QKeySequence(Qt::CTRL | static_cast<Qt::Key>(Qt::Key_1 + static_cast<int>(slot)));
-}
+// NB: Ctrl is the Command key on macOS. While a Superbird command has Cmd/Ctrl+1-9, the window selects tabs by number
+//     with Cmd/Ctrl+Shift+1-9 alone (see WindowHost::install_shortcuts()).
+static constexpr Array<ModuleShortcut, 13> SHORTCUTS { {
+    { .command_id = "workspaces.switch_1"sv, .title = "Switch to workspace 1"sv, .default_shortcut = "Ctrl+1"sv },
+    { .command_id = "workspaces.switch_2"sv, .title = "Switch to workspace 2"sv, .default_shortcut = "Ctrl+2"sv },
+    { .command_id = "workspaces.switch_3"sv, .title = "Switch to workspace 3"sv, .default_shortcut = "Ctrl+3"sv },
+    { .command_id = "workspaces.switch_4"sv, .title = "Switch to workspace 4"sv, .default_shortcut = "Ctrl+4"sv },
+    { .command_id = "workspaces.switch_5"sv, .title = "Switch to workspace 5"sv, .default_shortcut = "Ctrl+5"sv },
+    { .command_id = "workspaces.switch_6"sv, .title = "Switch to workspace 6"sv, .default_shortcut = "Ctrl+6"sv },
+    { .command_id = "workspaces.switch_7"sv, .title = "Switch to workspace 7"sv, .default_shortcut = "Ctrl+7"sv },
+    { .command_id = "workspaces.switch_8"sv, .title = "Switch to workspace 8"sv, .default_shortcut = "Ctrl+8"sv },
+    { .command_id = "workspaces.switch_9"sv, .title = "Switch to workspace 9"sv, .default_shortcut = "Ctrl+9"sv },
+    { .command_id = "workspaces.next"sv, .title = "Next workspace"sv },
+    { .command_id = "workspaces.previous"sv, .title = "Previous workspace"sv },
+    { .command_id = "workspaces.new"sv, .title = "New workspace"sv },
+    { .command_id = "workspaces.move_tab_to_next"sv, .title = "Move the current tab to the next workspace"sv },
+} };
 
 static QString to_qstring(std::string const& string)
 {
@@ -113,6 +123,7 @@ ModuleInfo WorkspacesModule::module_info()
         .name = "Workspaces"sv,
         .description = "Split a window's tabs into named workspaces (Home, Work, School...) and switch between them from the sidebar, the Command Palette or Cmd/Ctrl+1-9. Tabs are then selected by number with Cmd/Ctrl+Shift+1-9."sv,
         .enabled_by_default = true,
+        .shortcuts = SHORTCUTS.span(),
     };
 }
 
@@ -147,16 +158,6 @@ void WorkspacesModule::install()
         m_activation_watcher = new ActivationWatcher(&m_window, [this] { publish_action_titles(); });
         m_window.installEventFilter(m_activation_watcher);
     }
-    if (m_shortcuts.is_empty()) {
-        for (size_t slot = 0; slot < WORKSPACE_SWITCH_SLOTS; ++slot) {
-            auto* shortcut = new QShortcut(switch_shortcut(slot), &m_window);
-            shortcut->setContext(Qt::WindowShortcut);
-            QObject::connect(shortcut, &QShortcut::activated, &m_window, [this, slot] { run(WorkspacesCommand::SwitchToWorkspace, slot); });
-            m_shortcuts.append(shortcut);
-            WindowHost::reserve_shortcut(switch_shortcut(slot));
-        }
-        m_window.set_plain_tab_number_shortcuts_enabled(false);
-    }
     if (!m_switcher) {
         m_switcher = new WorkspaceSwitcher;
         m_switcher->on_activate = [this](auto id) { switch_to(id); };
@@ -179,12 +180,6 @@ void WorkspacesModule::install()
 
 void WorkspacesModule::uninstall()
 {
-    for (size_t slot = 0; slot < m_shortcuts.size(); ++slot) {
-        WindowHost::release_shortcut(switch_shortcut(slot));
-        delete m_shortcuts[slot].data();
-    }
-    m_shortcuts.clear();
-    m_window.set_plain_tab_number_shortcuts_enabled(true);
     if (m_switcher) {
         m_window.tab_widget().set_sidebar_footer_widget(nullptr);
         delete m_switcher.data();

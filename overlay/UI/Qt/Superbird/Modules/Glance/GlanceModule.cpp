@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <AK/Array.h>
 #include <LibURL/Parser.h>
 #include <UI/Qt/Actions.h>
 #include <UI/Qt/Application.h>
@@ -89,6 +90,18 @@ private:
 
 }
 
+static constexpr StringView ALT_CLICK_OPTION = "alt_click"sv;
+
+static constexpr Array<ModuleOption, 1> OPTIONS { {
+    { .id = ALT_CLICK_OPTION, .label = "Peek with Alt/Option+click"sv, .description = "Alt/Option+click a link to open it in Glance. Peek in Glance in a link's menu works either way."sv },
+} };
+
+static constexpr Array<ModuleShortcut, 3> SHORTCUTS { {
+    { .command_id = "glance.open_as_tab"sv, .title = "Open the peeked page as a tab"sv },
+    { .command_id = "glance.copy_url"sv, .title = "Copy the peeked page's URL"sv },
+    { .command_id = "glance.close"sv, .title = "Close Glance"sv },
+} };
+
 ModuleInfo GlanceModule::module_info()
 {
     return {
@@ -96,6 +109,8 @@ ModuleInfo GlanceModule::module_info()
         .name = "Glance"sv,
         .description = "Alt/Option+click a link (or choose Peek in Glance) to preview it in a floating sheet, then close it or open it as a tab."sv,
         .enabled_by_default = true,
+        .options = OPTIONS.span(),
+        .shortcuts = SHORTCUTS.span(),
     };
 }
 
@@ -103,7 +118,7 @@ GlanceModule::GlanceModule(Ladybird::BrowserWindow& window)
     : m_window(window)
 {
     m_click_filter = new AltClickFilter(&m_window, [this](QObject* watched) {
-        if (!is_enabled())
+        if (!is_enabled() || !WindowHost::module_option_is_on(MODULE_ID, ALT_CLICK_OPTION))
             return false;
         for (int index = 0; index < m_window.tab_count(); ++index) {
             auto* tab = m_window.tab_at(index);

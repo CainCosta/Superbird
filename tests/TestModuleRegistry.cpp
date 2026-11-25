@@ -170,11 +170,49 @@ static void test_action_registration_and_filtering()
     EXPECT(registry.matching_actions("reader"sv).size() == 1);
 }
 
+static void test_settings_schema_and_action_lookup()
+{
+    static constexpr ModuleChoice choices[] = {
+        { "a"sv, "Choice \"A\""sv },
+        { "b"sv, "B"sv },
+    };
+    static constexpr ModuleOption options[] = {
+        { .id = "on"sv, .label = "On"sv },
+        { .id = "pick"sv, .label = "Pick"sv, .description = "Line\none"sv, .kind = ModuleOption::Kind::Choice, .default_value = "b"sv, .choices = { choices, 2 } },
+    };
+    static constexpr ModuleShortcut shortcuts[] = {
+        { .command_id = "m.open"sv, .title = "Open"sv, .default_shortcut = "Ctrl+K; F2"sv },
+        { .command_id = "m.other"sv, .title = "Other"sv },
+    };
+    ModuleInfo info {
+        .id = "m"sv,
+        .name = "M"sv,
+        .description = "d"sv,
+        .options = { options, 2 },
+        .shortcuts = { shortcuts, 2 },
+    };
+    auto json = module_settings_schema_json(info);
+    EXPECT(json == R"({"options":[{"id":"on","label":"On","description":"","kind":"switch","default":"true","choices":[]},)"
+                   R"({"id":"pick","label":"Pick","description":"Line\none","kind":"choice","default":"b","choices":[{"value":"a","label":"Choice \"A\""},{"value":"b","label":"B"}]}],)"
+                   R"("shortcuts":[{"command":"m.open","title":"Open","default":"Ctrl+K; F2"},{"command":"m.other","title":"Other","default":""}]})");
+
+    EXPECT(module_settings_schema_json(ModuleInfo { .id = "x"sv, .name = "X"sv, .description = ""sv }) == R"({"options":[],"shortcuts":[]})");
+
+    ModuleRegistry registry;
+    registry.register_module(info);
+    registry.register_action(ActionDescriptor { .id = "m.open"sv, .module_id = "m"sv, .title = "Open"sv, .category = "M"sv });
+    EXPECT(registry.action("m.open"sv) != nullptr);
+    EXPECT(registry.action("m.open"sv)->title == "Open"sv);
+    EXPECT(registry.action("m.missing"sv) == nullptr);
+    EXPECT(registry.module_info("m"sv)->shortcuts.size() == 2);
+}
+
 int main()
 {
     test_module_registration_and_defaults();
     test_enable_disable_and_observer_notifications();
     test_action_registration_and_filtering();
+    test_settings_schema_and_action_lookup();
     std::printf("All ModuleRegistry unit tests passed!\n");
     return 0;
 }

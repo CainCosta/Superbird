@@ -72,6 +72,9 @@ public:
 
     static bool matches_query(ActionDescriptor const&, StringView query);
 
+    // The action with this id, whether or not it's available now.
+    ActionDescriptor const* action(StringView id) const;
+
 private:
     Vector<ModuleInfo> m_modules;
     HashMap<StringView, bool> m_enabled_state;

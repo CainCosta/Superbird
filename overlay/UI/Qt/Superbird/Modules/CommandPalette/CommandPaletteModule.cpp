@@ -24,23 +24,13 @@
 
 #include <QApplication>
 #include <QClipboard>
-#include <QKeySequence>
-#include <QLineEdit>
-#include <QKeyEvent>
 #include <QScreen>
-#include <QShortcut>
 #include <QTimer>
 
 namespace Superbird {
 
 static constexpr size_t RESULT_LIMIT = 60;
 static constexpr size_t HISTORY_LIMIT = 12;
-
-static Array<QKeySequence, 2> palette_shortcuts()
-{
-    // NB: Qt::CTRL is Command on macOS.
-    return { { QKeySequence(Qt::CTRL | Qt::Key_K), QKeySequence(Qt::Key_F2) } };
-}
 
 static std::string to_std_string(QString const& string)
 {
@@ -96,6 +86,19 @@ static Vector<int> highlight_indices(std::string const& utf8, std::vector<size_t
     return indices;
 }
 
+static constexpr StringView INCLUDE_BOOKMARKS_OPTION = "include_bookmarks"sv;
+static constexpr StringView INCLUDE_HISTORY_OPTION = "include_history"sv;
+
+static constexpr Array<ModuleOption, 2> OPTIONS { {
+    { .id = INCLUDE_BOOKMARKS_OPTION, .label = "Search bookmarks"sv, .description = "List bookmarks among the results."sv },
+    { .id = INCLUDE_HISTORY_OPTION, .label = "Search history"sv, .description = "List recently visited pages among the results (never in private windows)."sv },
+} };
+
+static constexpr Array<ModuleShortcut, 1> SHORTCUTS { {
+    // NB: Ctrl is Command on macOS.
+    { .command_id = COMMAND_PALETTE_OPEN_ACTION_ID, .title = "Open the Command Palette"sv, .default_shortcut = "Ctrl+K; F2"sv },
+} };
+
 ModuleInfo CommandPaletteModule::module_info()
 {
     return {
@@ -103,98 +106,22 @@ ModuleInfo CommandPaletteModule::module_info()
         .name = "Command Palette"sv,
         .description = "Press Cmd/Ctrl+K or F2 to fuzzy-search open tabs, bookmarks, history and every Superbird and browser command, calculate with =, or jump to an address."sv,
         .enabled_by_default = true,
+        .options = OPTIONS.span(),
+        .shortcuts = SHORTCUTS.span(),
     };
 }
 
 CommandPaletteModule::CommandPaletteModule(Ladybird::BrowserWindow& window)
     : m_window(window)
 {
-    if (ModuleRegistry::the().is_enabled(MODULE_ID))
-        install_shortcuts();
 }
 
-CommandPaletteModule::~CommandPaletteModule()
-{
-    remove_shortcuts();
-}
-
-namespace {
-
-// Text fields claim some keys for editing (Ctrl+K deletes to the end of the line on Linux); in this window's fields the
-// palette's shortcuts win instead.
-class ShortcutPriorityFilter final : public QObject {
-public:
-    ShortcutPriorityFilter(QWidget& window, QObject* parent)
-        : QObject(parent)
-        , m_window(&window)
-    {
-    }
-
-private:
-    virtual bool eventFilter(QObject* watched, QEvent* event) override
-    {
-        if (event->type() != QEvent::ShortcutOverride)
-            return false;
-        auto* field = qobject_cast<QLineEdit*>(watched);
-        if (!field || field->window() != m_window)
-            return false;
-        auto const& key_event = *static_cast<QKeyEvent*>(event);
-        auto modifiers = key_event.modifiers() & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
-        QKeySequence pressed(QKeyCombination(modifiers, static_cast<Qt::Key>(key_event.key())));
-        for (auto const& sequence : palette_shortcuts()) {
-            if (sequence == pressed) {
-                // Not taken by the field, so the window's shortcut fires.
-                event->ignore();
-                return true;
-            }
-        }
-        return false;
-    }
-
-    QPointer<QWidget> m_window;
-};
-
-}
-
-void CommandPaletteModule::install_shortcuts()
-{
-    if (!m_shortcuts.is_empty())
-        return;
-    if (!m_shortcut_priority_filter) {
-        m_shortcut_priority_filter = new ShortcutPriorityFilter(m_window, &m_window);
-        QApplication::instance()->installEventFilter(m_shortcut_priority_filter);
-    }
-    for (auto const& sequence : palette_shortcuts()) {
-        auto* shortcut = new QShortcut(sequence, &m_window);
-        shortcut->setContext(Qt::WindowShortcut);
-        QObject::connect(shortcut, &QShortcut::activated, &m_window, [this] { open(); });
-        m_shortcuts.append(shortcut);
-        WindowHost::reserve_shortcut(sequence);
-    }
-}
-
-void CommandPaletteModule::remove_shortcuts()
-{
-    if (m_shortcut_priority_filter) {
-        QApplication::instance()->removeEventFilter(m_shortcut_priority_filter);
-        delete m_shortcut_priority_filter.data();
-    }
-    if (m_shortcuts.is_empty())
-        return;
-    for (auto const& sequence : palette_shortcuts())
-        WindowHost::release_shortcut(sequence);
-    for (auto& shortcut : m_shortcuts)
-        delete shortcut.data();
-    m_shortcuts.clear();
-}
+CommandPaletteModule::~CommandPaletteModule() = default;
 
 void CommandPaletteModule::on_enabled_changed(bool enabled)
 {
-    if (enabled) {
-        install_shortcuts();
+    if (enabled)
         return;
-    }
-    remove_shortcuts();
     if (m_popover) {
         m_popover->hide();
         m_popover->deleteLater();
@@ -285,10 +212,14 @@ void CommandPaletteModule::gather_base_entries()
     auto action_icon = Ladybird::create_chrome_icon(Ladybird::ChromeIcon::DoubleChevronRight, Ladybird::Theme::panel().muted);
     for (auto& entry : collect_action_entries(ModuleRegistry::the())) {
         auto detail = to_qstring(entry.subtitle);
+        if (auto shortcut = WindowHost::shortcut_text(StringView { entry.key.data(), entry.key.size() }); !shortcut.isEmpty())
+            detail += QString(" \xC2\xB7 %1").arg(shortcut);
         add(move(entry), { action_icon, detail, {}, {} });
     }
 
     // Bookmarks, flattened out of their folders.
+    if (!WindowHost::module_option_is_on(MODULE_ID, INCLUDE_BOOKMARKS_OPTION))
+        return;
     auto bookmark_icon = Ladybird::create_chrome_icon(Ladybird::ChromeIcon::Star, Ladybird::Theme::panel().muted);
     Function<void(Vector<Ladybird::BookmarkItem> const&)> add_bookmarks = [&](Vector<Ladybird::BookmarkItem> const& items) {
         for (auto const& item : items) {
@@ -354,7 +285,7 @@ void CommandPaletteModule::update_results(QString const& query)
     Vector<Target> targets = m_base_targets;
 
     if (!text.empty()) {
-        if (m_window.is_private() == WebView::IsPrivate::No) {
+        if (m_window.is_private() == WebView::IsPrivate::No && WindowHost::module_option_is_on(MODULE_ID, INCLUDE_HISTORY_OPTION)) {
             auto history_icon = Ladybird::create_chrome_icon(Ladybird::ChromeIcon::Back, Ladybird::Theme::panel().muted);
             auto history = Ladybird::Application::history_store().autocomplete_entries(StringView { text.data(), text.size() }, HISTORY_LIMIT);
             for (auto const& history_entry : history) {
@@ -609,6 +540,22 @@ void CommandPaletteModule::register_actions(ModuleRegistry& registry)
 {
     static ActiveWindowBrowserHandler handler;
     register_browser_actions(registry, handler);
+
+    // Opening the palette is a command too, so its shortcut can be changed in about:settings like any other.
+    registry.register_action(ActionDescriptor {
+        .id = COMMAND_PALETTE_OPEN_ACTION_ID,
+        .module_id = MODULE_ID,
+        .title = "Open Command Palette"sv,
+        .category = "Command Palette"sv,
+        .is_available = [] { return Ladybird::Application::the().active_window_if_any() != nullptr; },
+        .trigger = [] {
+            auto* window = Ladybird::Application::the().active_window_if_any();
+            if (!window)
+                return;
+            if (auto* module = window->superbird().module(MODULE_ID))
+                static_cast<CommandPaletteModule*>(module)->open();
+        },
+    });
 }
 
 }

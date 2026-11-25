@@ -16,9 +16,13 @@
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
 
 #include <QColor>
+#include <QKeySequence>
+#include <QList>
+#include <QPointer>
+#include <QString>
 
 class QKeyEvent;
-class QKeySequence;
+class QShortcut;
 class QMenu;
 
 namespace Ladybird {
@@ -56,6 +60,14 @@ public:
     static void reserve_shortcut(QKeySequence const&);
     static void release_shortcut(QKeySequence const&);
     static bool is_reserved_shortcut(QKeyEvent const&);
+
+    // A module's option as about:settings sets it, or its default.
+    static String module_option(StringView module_id, StringView option_id);
+    static bool module_option_is_on(StringView module_id, StringView option_id);
+    // The shortcuts of a command (see ModuleShortcut): the ones picked in about:settings, or its defaults.
+    static QList<QKeySequence> shortcuts_for(StringView command_id);
+    // The first of them, as the platform writes it ("⌘K"), or nothing.
+    static QString shortcut_text(StringView command_id);
 
     // Lets the modules of the window showing this view add to a link's context menu.
     static void extend_link_context_menu(Ladybird::RemoteView&, Ladybird::Menu&, URL::URL const&);
@@ -106,9 +118,16 @@ public:
 private:
     virtual void module_enabled_changed(StringView module_id, bool enabled) override;
 
+    // Sets up this window's shortcuts for the enabled modules' commands, replacing the ones it had.
+    void install_shortcuts();
+    void remove_shortcuts();
+
     [[maybe_unused]] Ladybird::BrowserWindow& m_window;
     Vector<NonnullOwnPtr<SuperbirdModule>> m_modules;
     [[maybe_unused]] TreeTabsModule* m_tree_tabs_module { nullptr };
+    Vector<QPointer<QShortcut>> m_shortcuts;
+    Vector<QKeySequence> m_reserved_shortcuts;
+    QPointer<QObject> m_field_shortcut_filter;
 };
 
 }

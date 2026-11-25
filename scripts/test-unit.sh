@@ -78,6 +78,7 @@ fi
 "$CXX" "${COMMON_FLAGS[@]}" \
     "$ROOT_DIR/tests/TestModuleRegistry.cpp" \
     "$ROOT_DIR/overlay/UI/Qt/Superbird/Core/ModuleRegistry.cpp" \
+    "$ROOT_DIR/overlay/UI/Qt/Superbird/Core/ModuleSettings.cpp" \
     "$TMP_DIR/ak_stubs.cpp" \
     -o "$TMP_DIR/test_module_registry"
 "$TMP_DIR/test_module_registry"

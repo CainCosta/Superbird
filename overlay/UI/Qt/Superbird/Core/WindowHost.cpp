@@ -35,6 +35,9 @@
 #include <QHash>
 #include <QKeyEvent>
 #include <QKeySequence>
+#include <QLineEdit>
+#include <QShortcut>
+#include <QTimer>
 
 namespace Superbird {
 
@@ -51,15 +54,18 @@ namespace Superbird {
     auto id = MUST(String::from_utf8(info.id));
     auto name = MUST(String::from_utf8(info.name));
     auto description = MUST(String::from_utf8(info.description));
+    auto schema_json = module_settings_schema_json(info);
+    auto schema = MUST(String::from_utf8(StringView { schema_json.data(), schema_json.size() }));
     Ladybird::Application::settings().register_superbird_module({
         .id = id,
         .name = name,
         .description = description,
         .enabled_by_default = info.enabled_by_default,
+        .settings_schema = schema,
     });
     // NB: about:settings is served by the Hub, which keeps its own settings, so it hears of the module too.
     if (auto* hub = Ladybird::HubConnection::the_if_connected())
-        hub->async_register_superbird_module(move(id), move(name), move(description), info.enabled_by_default);
+        hub->async_register_superbird_module(move(id), move(name), move(description), info.enabled_by_default, move(schema));
 }
 
 void WindowHost::register_compiled_modules()
@@ -138,6 +144,161 @@ bool WindowHost::is_reserved_shortcut(QKeyEvent const& event)
     return shortcuts.contains(QKeyCombination(modifiers, static_cast<Qt::Key>(event.key())));
 }
 
+static String to_string(StringView text)
+{
+    return MUST(String::from_utf8(text));
+}
+
+String WindowHost::module_option(StringView module_id, StringView option_id)
+{
+    auto const& settings = Ladybird::Application::settings().superbird_settings();
+    if (auto options = settings.module_options.get(to_string(module_id)); options.has_value()) {
+        if (auto value = options->get(to_string(option_id)); value.has_value())
+            return *value;
+    }
+    if (auto info = ModuleRegistry::the().module_info(module_id); info.has_value()) {
+        for (auto const& option : info->options) {
+            if (option.id == option_id)
+                return to_string(option.default_value);
+        }
+    }
+    return {};
+}
+
+bool WindowHost::module_option_is_on(StringView module_id, StringView option_id)
+{
+    return module_option(module_id, option_id) == "true"sv;
+}
+
+static QList<QKeySequence> parse_shortcuts(StringView text)
+{
+    QList<QKeySequence> sequences;
+    // NB: The list separator is "; ", so a shortcut of Ctrl+; still reads as one.
+    auto text_string = QString::fromUtf8(text.characters_without_null_termination(), static_cast<qsizetype>(text.length()));
+    for (auto const& sequence : QKeySequence::listFromString(text_string, QKeySequence::PortableText)) {
+        if (sequence.isEmpty() || sequence[0].key() == Qt::Key_unknown)
+            continue;
+        if (!sequences.contains(sequence))
+            sequences.append(sequence);
+    }
+    return sequences;
+}
+
+QList<QKeySequence> WindowHost::shortcuts_for(StringView command_id)
+{
+    auto const& settings = Ladybird::Application::settings().superbird_settings();
+    if (auto picked = settings.shortcuts.get(to_string(command_id)); picked.has_value())
+        return parse_shortcuts(*picked);
+    for (auto const& info : ModuleRegistry::the().modules()) {
+        for (auto const& shortcut : info.shortcuts) {
+            if (shortcut.command_id == command_id)
+                return parse_shortcuts(shortcut.default_shortcut);
+        }
+    }
+    return {};
+}
+
+QString WindowHost::shortcut_text(StringView command_id)
+{
+    auto sequences = shortcuts_for(command_id);
+    if (sequences.isEmpty())
+        return {};
+    return sequences.first().toString(QKeySequence::NativeText);
+}
+
+namespace {
+
+// Text fields claim some keys for editing (Ctrl+K deletes to the end of the line on Linux); in this window's fields
+// the window's Superbird shortcuts win instead.
+class FieldShortcutFilter final : public QObject {
+public:
+    FieldShortcutFilter(QWidget& window, Function<bool(QKeyCombination)> is_shortcut)
+        : QObject(&window)
+        , m_window(&window)
+        , m_is_shortcut(AK::move(is_shortcut))
+    {
+    }
+
+private:
+    virtual bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (event->type() != QEvent::ShortcutOverride)
+            return false;
+        auto* field = qobject_cast<QLineEdit*>(watched);
+        if (!field || field->window() != m_window)
+            return false;
+        auto const& key_event = *static_cast<QKeyEvent*>(event);
+        auto modifiers = key_event.modifiers() & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+        if (!m_is_shortcut(QKeyCombination(modifiers, static_cast<Qt::Key>(key_event.key()))))
+            return false;
+        // Not taken by the field, so the window's shortcut fires.
+        event->ignore();
+        return true;
+    }
+
+    QPointer<QWidget> m_window;
+    Function<bool(QKeyCombination)> m_is_shortcut;
+};
+
+}
+
+void WindowHost::install_shortcuts()
+{
+    remove_shortcuts();
+
+    auto& registry = ModuleRegistry::the();
+    bool takes_plain_digits = false;
+    for (auto const& info : registry.modules()) {
+        if (!registry.is_enabled(info.id))
+            continue;
+        for (auto const& command : info.shortcuts) {
+            for (auto const& sequence : shortcuts_for(command.command_id)) {
+                // The first command to claim a key keeps it; a second shortcut for it would make both ambiguous.
+                if (m_reserved_shortcuts.contains_slow(sequence))
+                    continue;
+                auto* shortcut = new QShortcut(sequence, &m_window);
+                shortcut->setContext(Qt::WindowShortcut);
+                QObject::connect(shortcut, &QShortcut::activated, &m_window, [command_id = command.command_id] {
+                    auto const* action = ModuleRegistry::the().action(command_id);
+                    if (action && action->trigger && action->available())
+                        action->trigger();
+                });
+                m_shortcuts.append(shortcut);
+                m_reserved_shortcuts.append(sequence);
+                reserve_shortcut(sequence);
+
+                auto combination = sequence[0];
+                if (sequence.count() == 1 && combination.keyboardModifiers() == Qt::ControlModifier
+                    && combination.key() >= Qt::Key_1 && combination.key() <= Qt::Key_9)
+                    takes_plain_digits = true;
+            }
+        }
+    }
+    // Cmd/Ctrl+1-9 pick tabs by number only while no Superbird command has one of them (Workspaces does by default).
+    m_window.set_plain_tab_number_shortcuts_enabled(!takes_plain_digits);
+
+    if (!m_shortcuts.is_empty() && !m_field_shortcut_filter) {
+        m_field_shortcut_filter = new FieldShortcutFilter(m_window, [this](QKeyCombination combination) {
+            return m_reserved_shortcuts.contains_slow(QKeySequence(combination));
+        });
+        QApplication::instance()->installEventFilter(m_field_shortcut_filter);
+    }
+}
+
+void WindowHost::remove_shortcuts()
+{
+    if (m_field_shortcut_filter) {
+        QApplication::instance()->removeEventFilter(m_field_shortcut_filter);
+        delete m_field_shortcut_filter.data();
+    }
+    for (auto const& sequence : m_reserved_shortcuts)
+        release_shortcut(sequence);
+    m_reserved_shortcuts.clear();
+    for (auto& shortcut : m_shortcuts)
+        delete shortcut.data();
+    m_shortcuts.clear();
+}
+
 void WindowHost::sync_registry_from_settings()
 {
     register_compiled_modules();
@@ -172,10 +333,15 @@ WindowHost::WindowHost(Ladybird::BrowserWindow& window)
 #endif
 
     ModuleRegistry::the().add_observer(*this);
+
+    // NB: The window makes its own tab-number shortcuts after its WindowHost, so the shortcuts that may replace them
+    //     wait for it.
+    QTimer::singleShot(0, &m_window, [this] { install_shortcuts(); });
 }
 
 WindowHost::~WindowHost()
 {
+    remove_shortcuts();
     ModuleRegistry::the().remove_observer(*this);
 }
 
@@ -203,6 +369,7 @@ void WindowHost::module_enabled_changed(StringView module_id, bool enabled)
         if (module->id() == module_id)
             module->on_enabled_changed(enabled);
     }
+    install_shortcuts();
 }
 
 void WindowHost::on_settings_changed()
@@ -210,6 +377,7 @@ void WindowHost::on_settings_changed()
     sync_registry_from_settings();
     for (auto& module : m_modules)
         module->on_settings_changed();
+    install_shortcuts();
 }
 
 void WindowHost::on_chrome_style_changed()

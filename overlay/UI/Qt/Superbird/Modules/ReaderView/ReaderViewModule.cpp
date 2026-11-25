@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <AK/Array.h>
 #include <AK/Platform.h>
 #include <UI/Qt/Application.h>
 #include <UI/Qt/BrowserWindow.h>
@@ -19,7 +20,6 @@
 
 #include <QAction>
 #include <QKeySequence>
-#include <QShortcut>
 #include <QTimer>
 
 namespace Superbird {
@@ -35,16 +35,27 @@ static Reader::ReaderPreferences& reader_preferences()
     return preferences;
 }
 
-static QKeySequence toggle_shortcut()
-{
+static constexpr StringView ADDRESS_BAR_BUTTON_OPTION = "address_bar_button"sv;
+static constexpr StringView TOGGLE_ACTION_ID = "reader_view.toggle"sv;
+
+static constexpr Array<ModuleOption, 1> OPTIONS { {
+    { .id = ADDRESS_BAR_BUTTON_OPTION, .label = "Show the Reader View button"sv, .description = "Put a book button in the address field on pages that read as articles."sv },
+} };
+
+static constexpr Array<ModuleShortcut, 6> SHORTCUTS { {
 #if defined(AK_OS_MACOS)
-    // NB: Qt::META is the Control key on macOS, and Qt::CTRL is Command. Cmd+Option+R and Cmd+Shift+R already reload
-    //     bypassing the cache there.
-    return QKeySequence(Qt::META | Qt::CTRL | Qt::Key_R);
+    // NB: Meta is the Control key on macOS, and Ctrl is Command. Cmd+Option+R and Cmd+Shift+R already reload bypassing
+    //     the cache there.
+    { .command_id = TOGGLE_ACTION_ID, .title = "Toggle Reader View"sv, .default_shortcut = "Meta+Ctrl+R"sv },
 #else
-    return QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_R);
+    { .command_id = TOGGLE_ACTION_ID, .title = "Toggle Reader View"sv, .default_shortcut = "Ctrl+Alt+R"sv },
 #endif
-}
+    { .command_id = "reader_view.increase_font_size"sv, .title = "Larger text"sv },
+    { .command_id = "reader_view.decrease_font_size"sv, .title = "Smaller text"sv },
+    { .command_id = "reader_view.cycle_font"sv, .title = "Next font"sv },
+    { .command_id = "reader_view.cycle_theme"sv, .title = "Next theme"sv },
+    { .command_id = "reader_view.cycle_width"sv, .title = "Next column width"sv },
+} };
 
 static bool is_web_page(URL::URL const& url)
 {
@@ -58,6 +69,8 @@ ModuleInfo ReaderViewModule::module_info()
         .name = "Reader View"sv,
         .description = "Read articles as clean, script-free text with adjustable fonts, sizes, widths and themes, without changing the page underneath."sv,
         .enabled_by_default = true,
+        .options = OPTIONS.span(),
+        .shortcuts = SHORTCUTS.span(),
     };
 }
 
@@ -80,15 +93,6 @@ bool ReaderViewModule::is_enabled() const
 
 void ReaderViewModule::install()
 {
-    if (!m_shortcut) {
-        m_shortcut = new QShortcut(toggle_shortcut(), &m_window);
-        m_shortcut->setContext(Qt::WindowShortcut);
-        QObject::connect(m_shortcut, &QShortcut::activated, &m_window, [this] {
-            if (auto* tab = m_window.current_tab(); tab && can_run(ReaderCommand::Toggle))
-                toggle(*tab);
-        });
-        WindowHost::reserve_shortcut(toggle_shortcut());
-    }
     for (int index = 0; index < m_window.tab_count(); ++index) {
         if (auto* tab = m_window.tab_at(index))
             attach(*tab);
@@ -97,10 +101,6 @@ void ReaderViewModule::install()
 
 void ReaderViewModule::uninstall()
 {
-    if (m_shortcut) {
-        delete m_shortcut.data();
-        WindowHost::release_shortcut(toggle_shortcut());
-    }
     Vector<Ladybird::Tab*> tabs;
     for (auto const& it : m_tabs)
         tabs.append(it.key);
@@ -157,7 +157,6 @@ void ReaderViewModule::attach_view(TabState& state)
         return;
 
     auto* action = new QAction(tab);
-    action->setToolTip(QString("Reader View (%1)").arg(toggle_shortcut().toString(QKeySequence::NativeText)));
     action->setVisible(false);
     QObject::connect(action, &QAction::triggered, tab, [this, tab = QPointer(tab)] {
         if (tab)
@@ -371,7 +370,15 @@ void ReaderViewModule::update_action(TabState& state)
                                  : Ladybird::create_chrome_icon(Ladybird::ChromeIcon::Document, palette));
     state.action->setCheckable(true);
     state.action->setChecked(active);
-    state.action->setVisible(is_enabled() && (active || state.readerable));
+    state.action->setVisible(is_enabled() && WindowHost::module_option_is_on(MODULE_ID, ADDRESS_BAR_BUTTON_OPTION) && (active || state.readerable));
+    auto shortcut = WindowHost::shortcut_text(TOGGLE_ACTION_ID);
+    state.action->setToolTip(shortcut.isEmpty() ? QString("Reader View") : QString("Reader View (%1)").arg(shortcut));
+}
+
+void ReaderViewModule::on_settings_changed()
+{
+    for (auto& it : m_tabs)
+        update_action(*it.value);
 }
 
 void ReaderViewModule::apply_preferences_everywhere()
