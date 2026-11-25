@@ -128,3 +128,13 @@ WS_DIR="$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/Workspaces"
     "$TMP_DIR/ak_stubs.cpp" \
     -o "$TMP_DIR/test_workspaces"
 "$TMP_DIR/test_workspaces"
+
+SV_DIR="$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/SplitView"
+"$CXX" "${COMMON_FLAGS[@]}" \
+    "$ROOT_DIR/tests/TestSplitLayout.cpp" \
+    "$SV_DIR/SplitLayout.cpp" \
+    "$SV_DIR/SplitViewActions.cpp" \
+    "$ROOT_DIR/overlay/UI/Qt/Superbird/Core/ModuleRegistry.cpp" \
+    "$TMP_DIR/ak_stubs.cpp" \
+    -o "$TMP_DIR/test_split_layout"
+"$TMP_DIR/test_split_layout"

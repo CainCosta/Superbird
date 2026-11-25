@@ -1,0 +1,245 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Superbird <superbird@local>
+Date: Tue, 24 Nov 2026 19:11:19 -0600
+Subject: [PATCH] UI/Qt: Keep TabWidget's own tab list and let a Superbird page
+ host borrow pages
+
+
+diff --git a/UI/Qt/TabBar.cpp b/UI/Qt/TabBar.cpp
+index fcaa28d4..9fd3da8d 100644
+--- a/UI/Qt/TabBar.cpp
++++ b/UI/Qt/TabBar.cpp
+@@ -262,6 +262,7 @@ static void set_dynamic_property_if_needed(QWidget& widget, char const* property
+ 
+ static QPointer<TabWidget> s_active_tab_drag_source;
+ static QPointer<Tab> s_active_tab_dragged_tab;
++Function<bool(Tab&, QPoint)> TabBar::on_tab_dropped_outside_strips;
+ static QPointer<TabWidget> s_pending_tab_drop_target;
+ static int s_pending_tab_drop_index { -1 };
+ // A tab dragged in a window of its own stays in that window's strip, rather than leaving a gap there.
+@@ -2362,7 +2363,8 @@ void TabBar::drag_tab_loose(Tab& tab, QPixmap card)
+                 if (auto* target_window = qobject_cast<BrowserWindow*>(drop_target->window()))
+                     source_window->move_tab_to_window(current_index, *target_window, s_pending_tab_drop_index);
+             } else if (!drop_target && !was_canceled && m_tab_widget->count() > 1) {
+-                source_window->detach_tab_to_new_window(current_index, QCursor::pos());
++                if (!on_tab_dropped_outside_strips || !on_tab_dropped_outside_strips(*dragged_tab, QCursor::pos()))
++                    source_window->detach_tab_to_new_window(current_index, QCursor::pos());
+             }
+         }
+     }
+@@ -3369,17 +3371,16 @@ TabWidget::TabWidget(WebView::IsPrivate is_private, QWidget* parent)
+ 
+     connect(m_tab_bar, &QTabBar::currentChanged, this, [this](int index) {
+         // The tab being left keeps its omnibox's editing session for when it is shown again.
+-        if (auto* previous_tab = qobject_cast<Tab*>(m_stacked_widget->currentWidget()); previous_tab && m_stacked_widget->indexOf(previous_tab) != index)
++        if (auto* previous_tab = qobject_cast<Tab*>(m_stacked_widget->currentWidget()); previous_tab && index_of(previous_tab) != index)
+             previous_tab->park_location_editing();
+ 
+         // Showing a tab shows its waiting permission prompt, which is placed below the tab's location field, so the
+         // field moves into the toolbar first.
+-        m_toolbar->bind(as_if<Tab>(m_stacked_widget->widget(index)));
++        m_toolbar->bind(tab(index));
+ 
+-        if (index >= 0 && index < m_stacked_widget->count())
+-            m_stacked_widget->setCurrentIndex(index);
++        show_page(tab(index));
+ 
+-        m_bookmarks_bar->bind(as_if<Tab>(m_stacked_widget->widget(index)));
++        m_bookmarks_bar->bind(tab(index));
+         emit current_tab_changed(index);
+ 
+         // The all-tabs list closes as another tab is selected, such as a new tab opened in front of it. Tabs opened or
+@@ -3395,13 +3396,8 @@ TabWidget::TabWidget(WebView::IsPrivate is_private, QWidget* parent)
+     connect(m_tab_bar, &QTabBar::tabCloseRequested, this, &TabWidget::tab_close_requested);
+ 
+     connect(m_tab_bar, &QTabBar::tabMoved, this, [this](int from, int to) {
+-        ScopeGuard guard { [&]() { m_stacked_widget->blockSignals(false); } };
+-        m_stacked_widget->blockSignals(true);
+-
+-        auto* widget = m_stacked_widget->widget(from);
+-        m_stacked_widget->removeWidget(widget);
+-        m_stacked_widget->insertWidget(to, widget);
+-        m_stacked_widget->setCurrentIndex(m_tab_bar->currentIndex());
++        m_tabs.insert(to, m_tabs.take(from));
++        show_page(tab(m_tab_bar->currentIndex()));
+     });
+ 
+     if constexpr (!use_native_macos_window_controls()) {
+@@ -3463,7 +3459,8 @@ void TabWidget::insert_tab(int index, Tab* widget, QString const& label)
+         connect(widget, &Tab::loaded, this, did_load, Qt::SingleShotConnection);
+     }
+ 
+-    m_stacked_widget->insertWidget(index, widget);
++    m_tabs.insert(index, widget);
++    m_stacked_widget->addWidget(widget);
+     m_tab_bar->insertTab(index, label);
+     place_toolbar_over_page_column();
+ 
+@@ -3476,9 +3473,10 @@ void TabWidget::insert_tab(int index, Tab* widget, QString const& label)
+ 
+ Tab* TabWidget::replace_tab(int index, Tab* widget)
+ {
+-    auto* old_widget = as_if<Tab>(m_stacked_widget->widget(index));
++    auto* old_widget = tab(index);
+     if (!old_widget)
+         return nullptr;
++    m_tabs[index] = widget;
+ 
+     update_all_tabs_entries_soon();
+ 
+@@ -3496,9 +3494,9 @@ Tab* TabWidget::replace_tab(int index, Tab* widget)
+         };
+         connect(widget, &Tab::loaded, this, did_load, Qt::SingleShotConnection);
+     }
+-    m_stacked_widget->insertWidget(index, widget);
++    m_stacked_widget->addWidget(widget);
+     if (m_tab_bar->currentIndex() >= 0)
+-        m_stacked_widget->setCurrentIndex(m_tab_bar->currentIndex());
++        show_page(tab(m_tab_bar->currentIndex()));
+     m_tab_bar->did_replace_tab(*old_widget, *widget);
+ 
+     m_tab_bar->update();
+@@ -3513,12 +3511,13 @@ void TabWidget::remove_tab(int index)
+ 
+ Tab* TabWidget::take_tab(int index)
+ {
+-    auto* widget = m_stacked_widget->widget(index);
++    auto* widget = tab(index);
+     if (!widget)
+         return nullptr;
+ 
+     update_all_tabs_entries_soon();
+ 
++    m_tabs.remove(index);
+     m_tab_bar->prepare_for_tab_removal(index);
+     m_stacked_widget->removeWidget(widget);
+     if (as<Tab>(widget)->is_loaded()) {
+@@ -3530,7 +3529,7 @@ Tab* TabWidget::take_tab(int index)
+     m_tab_bar->removeTab(index);
+ 
+     if (m_tab_bar->count() > 0 && m_tab_bar->currentIndex() >= 0)
+-        m_stacked_widget->setCurrentIndex(m_tab_bar->currentIndex());
++        show_page(tab(m_tab_bar->currentIndex()));
+ 
+     update_tab_layout();
+     update_tab_button_visibility();
+@@ -3539,13 +3538,50 @@ Tab* TabWidget::take_tab(int index)
+ 
+ void TabWidget::set_current_tab(Tab* widget)
+ {
+-    if (auto index = m_stacked_widget->indexOf(widget); index >= 0)
++    if (auto index = index_of(widget); index >= 0)
+         set_current_index(index);
+ }
+ 
+ int TabWidget::index_of(Tab* widget) const
+ {
+-    return m_stacked_widget->indexOf(widget);
++    auto index = m_tabs.find_first_index(widget);
++    return index.has_value() ? static_cast<int>(*index) : -1;
++}
++
++// A lent page shows in the page host, so only a page still in the stack is brought up there.
++void TabWidget::show_page(Tab* page)
++{
++    if (page && m_stacked_widget->indexOf(page) >= 0)
++        m_stacked_widget->setCurrentWidget(page);
++}
++
++void TabWidget::set_page_host(QWidget* host)
++{
++    if (m_page_host == host)
++        return;
++    if (m_page_host)
++        m_stacked_widget->removeWidget(m_page_host);
++    m_page_host = host;
++    if (host) {
++        m_stacked_widget->addWidget(host);
++        m_stacked_widget->setCurrentWidget(host);
++    } else {
++        show_page(tab(current_index()));
++    }
++}
++
++void TabWidget::lend_page(Tab& page)
++{
++    m_stacked_widget->removeWidget(&page);
++}
++
++void TabWidget::return_page(Tab& page)
++{
++    if (m_stacked_widget->indexOf(&page) >= 0 || index_of(&page) < 0)
++        return;
++    m_stacked_widget->addWidget(&page);
++    if (&page == tab(current_index()) && !m_page_host)
++        show_page(&page);
+ }
+ 
+ void TabWidget::set_new_tab_action(QAction* action)
+@@ -4162,7 +4198,7 @@ bool TabWidget::eventFilter(QObject* watched, QEvent* event)
+         defer_update_vertical_tabs_hover_expanded();
+ 
+     if (event->type() == QEvent::Resize) {
+-        if (auto* current = as_if<Tab>(m_stacked_widget->currentWidget()); current && current->is_loaded() && watched == &current->view())
++        if (auto* current = tab(current_index()); current && current->is_loaded() && watched == &current->view())
+             size_hidden_pages_like_the_current_one();
+     }
+ 
+@@ -4302,11 +4338,11 @@ void TabWidget::resizeEvent(QResizeEvent* event)
+ // out before the current page's child layout has run. So at that point the current view still has its placeholder size.
+ void TabWidget::size_hidden_pages_like_the_current_one()
+ {
+-    auto* current = as_if<Tab>(m_stacked_widget->currentWidget());
++    auto* current = tab(current_index());
+     if (!current || !current->is_loaded())
+         return;
+-    for (int i = 0; i < m_stacked_widget->count(); ++i) {
+-        if (auto* page = as_if<Tab>(m_stacked_widget->widget(i)); page && page != current && page->is_loaded())
++    for (auto* page : m_tabs) {
++        if (page != current && page->is_loaded() && m_stacked_widget->indexOf(page) >= 0)
+             size_page_like(*page, *current);
+     }
+ }
+diff --git a/UI/Qt/TabBar.h b/UI/Qt/TabBar.h
+index 84a429e9..1a18d194 100644
+--- a/UI/Qt/TabBar.h
++++ b/UI/Qt/TabBar.h
+@@ -82,6 +82,10 @@ class TabBar final : public QTabBar {
+     Q_OBJECT
+ 
+ public:
++    // Superbird Split View: offered a tab dropped away from every tab strip, before it would open in a window of its
++    // own. Returns whether it took the tab.
++    static Function<bool(Tab&, QPoint global_position)> on_tab_dropped_outside_strips;
++
+     AK_ALLOC_WITH_KMALLOC;
+ 
+     explicit TabBar(TabWidget*);
+@@ -325,9 +329,15 @@ public:
+     int current_index() const { return m_tab_bar->currentIndex(); }
+     void set_current_index(int index) { m_tab_bar->setCurrentIndex(index); }
+ 
+-    Tab* tab(int index) const { return as<Tab>(m_stacked_widget->widget(index)); }
++    Tab* tab(int index) const { return index >= 0 && static_cast<size_t>(index) < m_tabs.size() ? m_tabs[index] : nullptr; }
+     void set_current_tab(Tab*);
+ 
++    // Superbird Split View: a host widget shown in place of the current tab's page, which can borrow several tabs'
++    // pages out of the page stack (and must give them back with return_page()) to show them side by side.
++    void set_page_host(QWidget*);
++    void lend_page(Tab&);
++    void return_page(Tab&);
++
+     WindowToolbar& toolbar() const { return *m_toolbar; }
+     BookmarksBar& bookmarks_bar() const { return m_bookmarks_bar->bar(); }
+     void update_bookmarks_bar_visibility();
+@@ -465,6 +475,10 @@ private:
+     void size_hidden_pages_like_the_current_one();
+ 
+     QStackedWidget* m_stacked_widget { nullptr };
++    // The tabs in tab bar order. The page stack holds their pages in no particular order, minus any lent out.
++    Vector<Tab*> m_tabs;
++    QPointer<QWidget> m_page_host;
++    void show_page(Tab*);
+     QToolButton* m_new_tab_button { nullptr };
+     QToolButton* m_all_tabs_button { nullptr };
+     ChromeHeaderButton* m_bookmarks_menu_button { nullptr };

@@ -79,3 +79,17 @@ if (SUPERBIRD_MODULE_WORKSPACES)
         Superbird/Modules/Workspaces/WorkspacesModule.h
     )
 endif()
+
+if (SUPERBIRD_MODULE_SPLIT_VIEW)
+    target_compile_definitions(ladybird_impl PUBLIC SUPERBIRD_MODULE_SPLIT_VIEW=1)
+    target_sources(ladybird_impl PRIVATE
+        Superbird/Modules/SplitView/SplitLayout.cpp
+        Superbird/Modules/SplitView/SplitLayout.h
+        Superbird/Modules/SplitView/SplitViewActions.cpp
+        Superbird/Modules/SplitView/SplitViewActions.h
+        Superbird/Modules/SplitView/SplitViewHost.cpp
+        Superbird/Modules/SplitView/SplitViewHost.h
+        Superbird/Modules/SplitView/SplitViewModule.cpp
+        Superbird/Modules/SplitView/SplitViewModule.h
+    )
+endif()

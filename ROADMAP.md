@@ -112,6 +112,8 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 
 ### M4 — Split View (Tab Tiling)
 *Inspired by Zen Split View, Vivaldi Tab Tiling, and Arc Split View.*
+
+> **Status: ✅ Shipped (M4).** `Modules/SplitView/` adds a pure `SplitLayout` tree (2–4 panes, nesting, grid, swap, collapse, normalized ratios) and a nested-`QSplitter` host with per-pane headers and an accent focus border; split from the tab menu, the Command Palette, or by dropping a tab near a page edge. The group steps aside when you visit another tab and returns with its tabs. Patch 0011 (+70/−25, user-approved over the "small" budget): `TabWidget` keeps its own tab list so pages can be lent to a page host (`set_page_host`/`lend_page`/`return_page`), plus `TabBar::on_tab_dropped_outside_strips`. Design: `docs/design/M4-split-view.md`.
 - **What it does:** View 2 tabs side-by-side (horizontal or vertical split), extendable to a 3–4 pane grid, inside the same browser window.
   - Trigger from tab context menu (*Split with Current Tab*), dragging a tab to the left/right edge of the viewport, or Command Palette (*Split View: Side by Side*, *Swap Panes*, *Unsplit*).
   - Uses a `QSplitter` container hosting the existing `Tab` / `WebContentView` widgets, with a subtle accent focus border on the active pane and a compact header strip for quick swap/unsplit.
@@ -146,7 +148,7 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 | **M1** ✅ | Command Palette (`Cmd/Ctrl+K` / `F2`) + action bus | Tiny (1 shortcut hook) | Fuzzy/math unit tests + opens & executes actions on macOS + Linux |
 | **M2** ✅ | Reader View (Hub IPC extraction + C++23 `ArticleExtractor` + reader overlay & typography controls) | Small (1 read-only Hub/RemoteView IPC message + address bar icon hook) | `ArticleExtractor` sanitization & scoring unit tests + green macOS + Linux CI |
 | **M3** ✅ | Workspaces (Spaces) + `Workspaces.db` + sidebar/toolbar switcher | Small (`TabWidget` / `TreeTabView` filter seam) | Workspace model unit tests + works with both Tree Tabs and regular tabs |
-| **M4** | Split View (2-pane / grid tab tiling) | Small (`TabWidget` page host seam) | Split layout unit tests + focus/close/resize stability |
+| **M4** ✅ | Split View (2-pane / grid tab tiling) | Small (`TabWidget` page host seam) | Split layout unit tests + focus/close/resize stability |
 | **M5** | Glance (Quick Peek floating sheet + promote to tab) | Tiny (link modifier / context menu hook) | Glance lifecycle tests + promotes cleanly into Tree Tabs |
 | **M6** | Tree-Style Tabs Wave 1 polish (sidebar filter box + branch color tags) | None (overlay-only!) | TreeTabModel unit tests |
 

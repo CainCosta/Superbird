@@ -8,3 +8,4 @@ option(SUPERBIRD_MODULE_TREE_TABS "Build the Superbird Tree-Style Tabs module" O
 option(SUPERBIRD_MODULE_COMMAND_PALETTE "Build the Superbird Command Palette module" ON)
 option(SUPERBIRD_MODULE_READER_VIEW "Build the Superbird Reader View module" ON)
 option(SUPERBIRD_MODULE_WORKSPACES "Build the Superbird Workspaces module" ON)
+option(SUPERBIRD_MODULE_SPLIT_VIEW "Build the Superbird Split View module" ON)

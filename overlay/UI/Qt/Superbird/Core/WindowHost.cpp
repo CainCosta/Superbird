@@ -22,6 +22,9 @@
 #if defined(SUPERBIRD_MODULE_WORKSPACES)
 #    include <UI/Qt/Superbird/Modules/Workspaces/WorkspacesModule.h>
 #endif
+#if defined(SUPERBIRD_MODULE_SPLIT_VIEW)
+#    include <UI/Qt/Superbird/Modules/SplitView/SplitViewModule.h>
+#endif
 
 #include <QHash>
 #include <QKeyEvent>
@@ -60,6 +63,9 @@ void WindowHost::register_compiled_modules()
 #endif
 #if defined(SUPERBIRD_MODULE_WORKSPACES)
     register_compiled_module(WorkspacesModule::module_info(), WorkspacesModule::register_actions);
+#endif
+#if defined(SUPERBIRD_MODULE_SPLIT_VIEW)
+    register_compiled_module(SplitViewModule::module_info(), SplitViewModule::register_actions);
 #endif
 }
 
@@ -142,6 +148,9 @@ WindowHost::WindowHost(Ladybird::BrowserWindow& window)
 #endif
 #if defined(SUPERBIRD_MODULE_WORKSPACES)
     m_modules.append(make<WorkspacesModule>(m_window));
+#endif
+#if defined(SUPERBIRD_MODULE_SPLIT_VIEW)
+    m_modules.append(make<SplitViewModule>(m_window));
 #endif
 
     ModuleRegistry::the().add_observer(*this);
