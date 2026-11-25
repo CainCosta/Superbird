@@ -1,0 +1,88 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Tue, 24 Nov 2026 22:23:28 -0600
+Subject: [PATCH] UI: Give Superbird an app icon of its own
+
+The macOS bundle, the Icon Composer icon, the Qt window icons and the
+installed freedesktop icon now come from Superbird's icons in
+UI/Icons/superbird, which Superbird's overlay provides. The Qt resources
+keep their old names, so nothing that loads them changes.
+
+iconutil rejects symlinked images, and overlay files are symlinked into
+the tree, so the bundle's iconset is copied before it is converted.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+diff --git a/UI/CMakeLists.txt b/UI/CMakeLists.txt
+index 08b00725..b93e108b 100644
+--- a/UI/CMakeLists.txt
++++ b/UI/CMakeLists.txt
+@@ -62,21 +62,24 @@ function(create_ladybird_bundle target_name)
+         set(app_icon_images)
+         foreach (size IN ITEMS 16 32 128 256 512)
+             list(APPEND app_icon_images
+-                "${LADYBIRD_SOURCE_DIR}/UI/Icons/macos/app_icon.iconset/icon_${size}x${size}.png"
+-                "${LADYBIRD_SOURCE_DIR}/UI/Icons/macos/app_icon.iconset/icon_${size}x${size}@2x.png"
++                "${LADYBIRD_SOURCE_DIR}/UI/Icons/superbird/macos/app_icon.iconset/icon_${size}x${size}.png"
++                "${LADYBIRD_SOURCE_DIR}/UI/Icons/superbird/macos/app_icon.iconset/icon_${size}x${size}@2x.png"
+             )
+         endforeach()
+         set_property(TARGET ${target_name} APPEND PROPERTY LINK_DEPENDS ${app_icon_images})
+ 
+         add_custom_command(TARGET ${target_name} POST_BUILD
+             COMMAND "${CMAKE_COMMAND}" -E make_directory "${bundle_dir}/Contents/Resources"
+-            COMMAND "iconutil" --convert icns "${LADYBIRD_SOURCE_DIR}/UI/Icons/macos/app_icon.iconset" --output "${bundle_dir}/Contents/Resources/app_icon.icns"
++            # NB: iconutil rejects symlinked images, and Superbird's icons are linked in from overlay/, so it converts a copy.
++            COMMAND "${CMAKE_COMMAND}" -E rm -rf "${CMAKE_CURRENT_BINARY_DIR}/app_icon.iconset"
++            COMMAND cp -RL "${LADYBIRD_SOURCE_DIR}/UI/Icons/superbird/macos/app_icon.iconset" "${CMAKE_CURRENT_BINARY_DIR}/app_icon.iconset"
++            COMMAND "iconutil" --convert icns "${CMAKE_CURRENT_BINARY_DIR}/app_icon.iconset" --output "${bundle_dir}/Contents/Resources/app_icon.icns"
+         )
+ 
+         # macOS 26 and later show the Icon Composer icon from the asset catalog, which adapts to the system's icon
+         # styles. Earlier versions show the flat app_icon.icns.
+         if (LADYBIRD_COMPILE_ICON_COMPOSER_ICON)
+-            set(icon_composer_icon "${LADYBIRD_SOURCE_DIR}/UI/Icons/macos/AppIcon.icon")
++            set(icon_composer_icon "${LADYBIRD_SOURCE_DIR}/UI/Icons/superbird/macos/AppIcon.icon")
+             set_property(TARGET ${target_name} APPEND PROPERTY LINK_DEPENDS
+                 "${icon_composer_icon}/icon.json"
+                 "${icon_composer_icon}/Assets/mark.svg"
+diff --git a/UI/Qt/ladybird.qrc b/UI/Qt/ladybird.qrc
+index 99f309c5..ca5e66be 100644
+--- a/UI/Qt/ladybird.qrc
++++ b/UI/Qt/ladybird.qrc
+@@ -1,7 +1,7 @@
+ <!DOCTYPE RCC><RCC version="1.0">
+     <qresource>
+-        <file>../Icons/ladybird.png</file>
+-        <file>../Icons/ladybird-private.png</file>
++        <file alias="Icons/ladybird.png">../Icons/superbird/superbird.png</file>
++        <file alias="Icons/ladybird-private.png">../Icons/superbird/superbird-private.png</file>
+         <file>OrcaScripts/Ladybird/__init__.py</file>
+         <file>OrcaScripts/Ladybird/script.py</file>
+         <file>OrcaScripts/Ladybird/script_utilities.py</file>
+diff --git a/UI/cmake/InstallRules.cmake b/UI/cmake/InstallRules.cmake
+index 2a8c18e7..904f743b 100644
+--- a/UI/cmake/InstallRules.cmake
++++ b/UI/cmake/InstallRules.cmake
+@@ -327,9 +327,8 @@ endif()
+ # copies in /usr that point at the installed command.
+ if (ENABLE_INSTALL_FREEDESKTOP_FILES)
+     install(FILES
+-        "${FREEDESKTOP_RESOURCE_DIR}/org.ladybird.Ladybird.svg"
++        "${FREEDESKTOP_RESOURCE_DIR}/org.superbird.Superbird.svg"
+         DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
+-        RENAME org.superbird.Superbird.svg
+         COMPONENT ladybird_Freedesktop
+     )
+     install(FILES
+@@ -377,9 +376,8 @@ if (LINUX)
+         COMPONENT ladybird_SystemIntegration
+         EXCLUDE_FROM_ALL
+     )
+-    install(FILES "${FREEDESKTOP_RESOURCE_DIR}/org.ladybird.Ladybird.svg"
++    install(FILES "${FREEDESKTOP_RESOURCE_DIR}/org.superbird.Superbird.svg"
+         DESTINATION /usr/share/icons/hicolor/scalable/apps
+-        RENAME org.superbird.Superbird.svg
+         COMPONENT ladybird_SystemIntegration
+         EXCLUDE_FROM_ALL
+     )
