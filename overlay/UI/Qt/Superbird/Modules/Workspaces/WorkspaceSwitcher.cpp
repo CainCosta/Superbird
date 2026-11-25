@@ -57,7 +57,8 @@ static void paint_badge(QPainter& painter, QRectF const& rect, Workspaces::Works
     // White on a tint or the accent, otherwise the chrome's text color.
     auto on_fill = active || workspace.tint.has_value() ? QColor(Qt::white) : Ladybird::Theme::chrome(palette).text;
     if (auto glyph = Workspaces::glyph_from_icon(workspace.icon); glyph.has_value()) {
-        auto inset = rect.width() * 0.19;
+        // NB: Menus show the badge at 16 px, where the glyph needs most of the badge to stay legible.
+        auto inset = rect.width() * (rect.width() < 20 ? 0.12 : 0.19);
         paint_workspace_glyph(painter, rect.adjusted(inset, inset, -inset, -inset), *glyph, on_fill);
         return;
     }
