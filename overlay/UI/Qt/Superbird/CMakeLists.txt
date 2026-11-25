@@ -93,3 +93,17 @@ if (SUPERBIRD_MODULE_SPLIT_VIEW)
         Superbird/Modules/SplitView/SplitViewModule.h
     )
 endif()
+
+if (SUPERBIRD_MODULE_GLANCE)
+    target_compile_definitions(ladybird_impl PUBLIC SUPERBIRD_MODULE_GLANCE=1)
+    target_sources(ladybird_impl PRIVATE
+        Superbird/Modules/Glance/GlanceActions.cpp
+        Superbird/Modules/Glance/GlanceActions.h
+        Superbird/Modules/Glance/GlanceModel.cpp
+        Superbird/Modules/Glance/GlanceModel.h
+        Superbird/Modules/Glance/GlanceModule.cpp
+        Superbird/Modules/Glance/GlanceModule.h
+        Superbird/Modules/Glance/GlanceOverlay.cpp
+        Superbird/Modules/Glance/GlanceOverlay.h
+    )
+endif()

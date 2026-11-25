@@ -138,3 +138,13 @@ SV_DIR="$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/SplitView"
     "$TMP_DIR/ak_stubs.cpp" \
     -o "$TMP_DIR/test_split_layout"
 "$TMP_DIR/test_split_layout"
+
+GL_DIR="$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/Glance"
+"$CXX" "${COMMON_FLAGS[@]}" \
+    "$ROOT_DIR/tests/TestGlance.cpp" \
+    "$GL_DIR/GlanceModel.cpp" \
+    "$GL_DIR/GlanceActions.cpp" \
+    "$ROOT_DIR/overlay/UI/Qt/Superbird/Core/ModuleRegistry.cpp" \
+    "$TMP_DIR/ak_stubs.cpp" \
+    -o "$TMP_DIR/test_glance"
+"$TMP_DIR/test_glance"

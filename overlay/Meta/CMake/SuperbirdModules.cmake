@@ -9,3 +9,4 @@ option(SUPERBIRD_MODULE_COMMAND_PALETTE "Build the Superbird Command Palette mod
 option(SUPERBIRD_MODULE_READER_VIEW "Build the Superbird Reader View module" ON)
 option(SUPERBIRD_MODULE_WORKSPACES "Build the Superbird Workspaces module" ON)
 option(SUPERBIRD_MODULE_SPLIT_VIEW "Build the Superbird Split View module" ON)
+option(SUPERBIRD_MODULE_GLANCE "Build the Superbird Glance module" ON)

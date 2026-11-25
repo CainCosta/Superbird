@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Superbird <superbird@local>
+Date: Tue, 24 Nov 2026 22:11:02 -0600
+Subject: [PATCH] UI/Qt: Let Superbird modules extend link menus and see the
+ hovered link
+
+
+diff --git a/UI/Qt/Actions.h b/UI/Qt/Actions.h
+index 32c2b9fb..573d8484 100644
+--- a/UI/Qt/Actions.h
++++ b/UI/Qt/Actions.h
+@@ -149,6 +149,8 @@ enum class ActionID {
+     NavigatorCompatibilityMode,
+     EnableScripting,
+     BlockPopUps,
++    // An action a Superbird module adds to a menu.
++    SuperbirdModuleAction,
+ };
+ 
+ using ActionText = Variant<StringView, String>;
+diff --git a/UI/Qt/ContextMenus.cpp b/UI/Qt/ContextMenus.cpp
+index 520ab3d3..352dfb67 100644
+--- a/UI/Qt/ContextMenus.cpp
++++ b/UI/Qt/ContextMenus.cpp
+@@ -13,6 +13,7 @@
+ #include <UI/Qt/ContextMenus.h>
+ #include <UI/Qt/HubConnection.h>
+ #include <UI/Qt/RemoteView.h>
++#include <UI/Qt/Superbird/Core/WindowHost.h>
+ 
+ namespace Ladybird {
+ 
+@@ -266,6 +267,7 @@ static NonnullRefPtr<Menu> create_link_context_menu(RemoteView& view, ContextMen
+ {
+     auto menu = Menu::create("Link Context Menu"sv);
+     add_link_actions(*menu, view, *request.link_navigation);
++    Superbird::WindowHost::extend_link_context_menu(view, *menu, request.link_navigation->url);
+     add_copy_link_to_highlight_action(*menu, view, request);
+     add_inspect_element_action(*menu, view.view_id(), request);
+     return menu;
+diff --git a/UI/Qt/Tab.h b/UI/Qt/Tab.h
+index facd92d9..68123609 100644
+--- a/UI/Qt/Tab.h
++++ b/UI/Qt/Tab.h
+@@ -151,6 +151,8 @@ public:
+ 
+     void set_window(BrowserWindow&);
+     void update_hover_label();
++    // The link under the pointer, as the hover label shows it (Superbird Glance opens it on Alt/Option+click).
++    QString const& hovered_link() const { return m_hover_text; }
+ 
+     void enter_report_review(Tab* tab_to_activate_on_close, Optional<QString> title = {});
+     bool is_in_report_review() const { return m_report_review_navigation_listener.has_value(); }

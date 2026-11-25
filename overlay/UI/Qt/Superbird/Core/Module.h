@@ -15,7 +15,12 @@ class QMenu;
 
 namespace Ladybird {
 class BrowserWindow;
+class Menu;
 class Tab;
+}
+
+namespace URL {
+class URL;
 }
 
 namespace Superbird {
@@ -70,6 +75,9 @@ public:
     // only if no enabled module hides it. WindowHost::update_tab_visibility() applies the answers.
     virtual bool is_tab_hidden(Ladybird::Tab&) const { return false; }
     virtual void on_tab_visibility_changed() { }
+
+    // Adds items to the context menu of a link in one of this window's tabs (e.g. "Peek in Glance").
+    virtual void extend_link_context_menu(Ladybird::Tab&, Ladybird::Menu&, URL::URL const&) { }
 };
 
 }

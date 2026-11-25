@@ -25,7 +25,11 @@
 #if defined(SUPERBIRD_MODULE_SPLIT_VIEW)
 #    include <UI/Qt/Superbird/Modules/SplitView/SplitViewModule.h>
 #endif
+#if defined(SUPERBIRD_MODULE_GLANCE)
+#    include <UI/Qt/Superbird/Modules/Glance/GlanceModule.h>
+#endif
 
+#include <QApplication>
 #include <QHash>
 #include <QKeyEvent>
 #include <QKeySequence>
@@ -66,6 +70,9 @@ void WindowHost::register_compiled_modules()
 #endif
 #if defined(SUPERBIRD_MODULE_SPLIT_VIEW)
     register_compiled_module(SplitViewModule::module_info(), SplitViewModule::register_actions);
+#endif
+#if defined(SUPERBIRD_MODULE_GLANCE)
+    register_compiled_module(GlanceModule::module_info(), GlanceModule::register_actions);
 #endif
 }
 
@@ -151,6 +158,9 @@ WindowHost::WindowHost(Ladybird::BrowserWindow& window)
 #endif
 #if defined(SUPERBIRD_MODULE_SPLIT_VIEW)
     m_modules.append(make<SplitViewModule>(m_window));
+#endif
+#if defined(SUPERBIRD_MODULE_GLANCE)
+    m_modules.append(make<GlanceModule>(m_window));
 #endif
 
     ModuleRegistry::the().add_observer(*this);
@@ -282,6 +292,24 @@ void WindowHost::update_window_tab_layout_menu()
 {
     for (auto& module : m_modules)
         module->update_window_tab_layout_menu();
+}
+
+void WindowHost::extend_link_context_menu(Ladybird::RemoteView& view, Ladybird::Menu& menu, URL::URL const& url)
+{
+    for (auto* widget : QApplication::topLevelWidgets()) {
+        auto* window = dynamic_cast<Ladybird::BrowserWindow*>(widget);
+        if (!window)
+            continue;
+        auto* tab = window->tab_for_view(view);
+        if (!tab)
+            continue;
+        auto& host = window->superbird();
+        for (auto& module : host.m_modules) {
+            if (ModuleRegistry::the().is_enabled(module->id()))
+                module->extend_link_context_menu(*tab, menu, url);
+        }
+        return;
+    }
 }
 
 bool WindowHost::is_tab_hidden(Ladybird::Tab& tab) const

@@ -124,6 +124,8 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 
 ### M5 — Glance (Quick Peek)
 *Inspired by Zen Glance and Little Arc.*
+
+> **Status: ✅ Shipped (M5).** `Modules/Glance/` adds a pure `GlanceModel` state machine (open/navigate/promote/dismiss, opener tracking, sheet sizing) and a dimmed floating sheet with its own non-tab `WebContentView`, "Open as Tab" (nested under the opener with Tree Tabs), "Copy URL" and Close (Esc/backdrop). Alt/Option+click is consumed inside LibWeb upstream, so Glance intercepts it on the UI side using the hovered link instead. Patch 0012 (+6): `Tab::hovered_link()`, `ActionID::SuperbirdModuleAction`, and a generic `WindowHost::extend_link_context_menu` call for "Peek in Glance". Design: `docs/design/M5-glance.md`.
 - **What it does:** Preview any link without opening a full tab or cluttering your tab tree.
   - Trigger via `Alt/Opt + Click` on a link (or right-click -> *Peek in Glance*).
   - Opens a centered, rounded floating modal sheet (~80% viewport) hosting a lightweight `WebContentView` with a minimal top strip: page title/domain, **Open as Tab** (promotes it to a real tab — nested as a child if Tree Tabs is on), **Copy URL**, and **Close (`Esc` or click backdrop)**.
@@ -149,7 +151,7 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 | **M2** ✅ | Reader View (Hub IPC extraction + C++23 `ArticleExtractor` + reader overlay & typography controls) | Small (1 read-only Hub/RemoteView IPC message + address bar icon hook) | `ArticleExtractor` sanitization & scoring unit tests + green macOS + Linux CI |
 | **M3** ✅ | Workspaces (Spaces) + `Workspaces.db` + sidebar/toolbar switcher | Small (`TabWidget` / `TreeTabView` filter seam) | Workspace model unit tests + works with both Tree Tabs and regular tabs |
 | **M4** ✅ | Split View (2-pane / grid tab tiling) | Small (`TabWidget` page host seam) | Split layout unit tests + focus/close/resize stability |
-| **M5** | Glance (Quick Peek floating sheet + promote to tab) | Tiny (link modifier / context menu hook) | Glance lifecycle tests + promotes cleanly into Tree Tabs |
+| **M5** ✅ | Glance (Quick Peek floating sheet + promote to tab) | Tiny (link modifier / context menu hook) | Glance lifecycle tests + promotes cleanly into Tree Tabs |
 | **M6** | Tree-Style Tabs Wave 1 polish (sidebar filter box + branch color tags) | None (overlay-only!) | TreeTabModel unit tests |
 
 ---

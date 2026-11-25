@@ -21,6 +21,8 @@ class QMenu;
 
 namespace Ladybird {
 class BrowserWindow;
+class Menu;
+class RemoteView;
 class Tab;
 class TreeTabController;
 }
@@ -52,6 +54,9 @@ public:
     static void reserve_shortcut(QKeySequence const&);
     static void release_shortcut(QKeySequence const&);
     static bool is_reserved_shortcut(QKeyEvent const&);
+
+    // Lets the modules of the window showing this view add to a link's context menu.
+    static void extend_link_context_menu(Ladybird::RemoteView&, Ladybird::Menu&, URL::URL const&);
 
     explicit WindowHost(Ladybird::BrowserWindow& window);
     virtual ~WindowHost() override;
