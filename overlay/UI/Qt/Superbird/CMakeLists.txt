@@ -71,6 +71,12 @@ if (SUPERBIRD_MODULE_WORKSPACES)
     target_sources(ladybird_impl PRIVATE
         Superbird/Modules/Workspaces/WorkspaceModel.cpp
         Superbird/Modules/Workspaces/WorkspaceModel.h
+        Superbird/Modules/Workspaces/WorkspaceGlyphs.cpp
+        Superbird/Modules/Workspaces/WorkspaceGlyphs.h
+        Superbird/Modules/Workspaces/WorkspacePicker.cpp
+        Superbird/Modules/Workspaces/WorkspacePicker.h
+        Superbird/Modules/Workspaces/WorkspacePresets.cpp
+        Superbird/Modules/Workspaces/WorkspacePresets.h
         Superbird/Modules/Workspaces/WorkspaceStore.cpp
         Superbird/Modules/Workspaces/WorkspaceStore.h
         Superbird/Modules/Workspaces/WorkspaceSwitcher.cpp

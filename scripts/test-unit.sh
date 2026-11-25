@@ -124,6 +124,7 @@ WS_DIR="$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/Workspaces"
 "$CXX" "${COMMON_FLAGS[@]}" \
     "$ROOT_DIR/tests/TestWorkspaces.cpp" \
     "$WS_DIR/WorkspaceModel.cpp" \
+    "$WS_DIR/WorkspacePresets.cpp" \
     "$WS_DIR/WorkspacesActions.cpp" \
     "$ROOT_DIR/overlay/UI/Qt/Superbird/Core/ModuleRegistry.cpp" \
     "$TMP_DIR/ak_stubs.cpp" \

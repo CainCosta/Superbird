@@ -7,6 +7,7 @@
 #include <AK/HashTable.h>
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
 #include <UI/Qt/Superbird/Modules/Workspaces/WorkspaceModel.h>
+#include <UI/Qt/Superbird/Modules/Workspaces/WorkspacePresets.h>
 #include <UI/Qt/Superbird/Modules/Workspaces/WorkspacesActions.h>
 
 #include <cstdio>
@@ -313,8 +314,63 @@ static void test_actions_and_switch_titles()
     EXPECT(registry.matching_actions().is_empty());
 }
 
+static void test_glyph_icons_round_trip()
+{
+    for (auto const& info : GLYPHS) {
+        auto icon = icon_for_glyph(info.glyph);
+        EXPECT(icon.starts_with(GLYPH_ICON_PREFIX));
+        EXPECT(glyph_from_icon(icon) == info.glyph);
+        EXPECT(glyph_info(info.glyph).key == info.key);
+    }
+    // Keys are unique.
+    for (size_t i = 0; i < GLYPHS.size(); ++i) {
+        for (size_t j = i + 1; j < GLYPHS.size(); ++j)
+            EXPECT(GLYPHS[i].key != GLYPHS[j].key);
+    }
+    // Icon text that isn't a glyph (a letter, an emoji, a bare key, an unknown key) shows as text.
+    EXPECT(!glyph_from_icon("").has_value());
+    EXPECT(!glyph_from_icon("W").has_value());
+    EXPECT(!glyph_from_icon("\xF0\x9F\x92\xBC").has_value());
+    EXPECT(!glyph_from_icon("home").has_value());
+    EXPECT(!glyph_from_icon("glyph:").has_value());
+    EXPECT(!glyph_from_icon("glyph:spaceship").has_value());
+    EXPECT(!glyph_from_icon("glyph:home ").has_value());
+}
+
+static void test_presets()
+{
+    std::string_view const expected[] = { "Home", "Work", "School", "Focus", "Relax" };
+    EXPECT(PRESETS.size() == std::size(expected));
+    for (size_t i = 0; i < PRESETS.size(); ++i) {
+        EXPECT(PRESETS[i].name == expected[i]);
+        // A preset's tint is one the editor offers, so it shows as picked there.
+        auto offered = false;
+        for (auto const& tint : TINTS)
+            offered |= tint.rgb == PRESETS[i].tint;
+        EXPECT(offered);
+    }
+
+    std::vector<std::string> names { "Default", "  work ", "Studies" };
+    EXPECT(!preset_is_taken(PRESETS[0], names));
+    EXPECT(preset_is_taken(PRESETS[1], names));
+    EXPECT(!preset_is_taken(PRESETS[2], names));
+    EXPECT(!preset_is_taken(PRESETS[1], {}));
+
+    // A preset makes a workspace the model keeps as is.
+    WorkspaceModel model;
+    auto id = model.create_workspace(PRESETS[3].name, icon_for_glyph(PRESETS[3].glyph), PRESETS[3].tint);
+    EXPECT(model.workspace(id)->name == "Focus");
+    EXPECT(glyph_from_icon(model.workspace(id)->icon) == Glyph::Focus);
+    EXPECT(model.workspace(id)->tint == PRESETS[3].tint);
+
+    EXPECT(default_tint_for_new_workspace(0) == TINTS[0].rgb);
+    EXPECT(default_tint_for_new_workspace(TINTS.size() + 2) == TINTS[2].rgb);
+}
+
 int main()
 {
+    test_glyph_icons_round_trip();
+    test_presets();
     test_actions_and_switch_titles();
     test_starts_with_default_workspace();
     test_crud();

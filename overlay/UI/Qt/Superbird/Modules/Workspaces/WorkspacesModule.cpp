@@ -15,6 +15,8 @@
 #if defined(SUPERBIRD_MODULE_TREE_TABS)
 #    include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabController.h>
 #endif
+#include <UI/Qt/Superbird/Modules/Workspaces/WorkspacePicker.h>
+#include <UI/Qt/Superbird/Modules/Workspaces/WorkspacePresets.h>
 #include <UI/Qt/Superbird/Modules/Workspaces/WorkspaceSwitcher.h>
 #include <UI/Qt/Superbird/Modules/Workspaces/WorkspacesModule.h>
 #include <UI/Qt/Tab.h>
@@ -24,7 +26,6 @@
 #include <QAction>
 #include <QCursor>
 #include <QEvent>
-#include <QInputDialog>
 #include <QKeySequence>
 #include <QMenu>
 #include <QMessageBox>
@@ -34,16 +35,6 @@
 namespace Superbird {
 
 static constexpr int PERSIST_DELAY_MS = 500;
-
-struct NamedTint {
-    char const* name;
-    uint32_t rgb;
-};
-
-static constexpr NamedTint TINTS[] = {
-    { "Red", 0xE5484D }, { "Orange", 0xF76B15 }, { "Yellow", 0xE2A336 }, { "Green", 0x30A46C },
-    { "Teal", 0x12A594 }, { "Blue", 0x0090FF }, { "Purple", 0x8E4EC6 }, { "Pink", 0xD6409F },
-};
 
 static QKeySequence switch_shortcut(size_t slot)
 {
@@ -60,12 +51,6 @@ static QKeySequence switch_shortcut(size_t slot)
 static QString to_qstring(std::string const& string)
 {
     return QString::fromUtf8(string.data(), static_cast<qsizetype>(string.size()));
-}
-
-static std::string to_std_string(QString const& string)
-{
-    auto utf8 = string.toUtf8();
-    return std::string(utf8.constData(), static_cast<size_t>(utf8.size()));
 }
 
 namespace {
@@ -207,6 +192,8 @@ void WorkspacesModule::uninstall()
         m_window.tab_widget().set_sidebar_footer_widget(nullptr);
         delete m_switcher.data();
     }
+    if (m_picker)
+        delete m_picker.data();
     for (auto& it : m_pill_actions)
         delete it.value.data();
     m_pill_actions.clear();
@@ -531,38 +518,75 @@ void WorkspacesModule::move_tab_to(Ladybird::Tab& tab, Workspaces::WorkspaceId w
     changed();
 }
 
-void WorkspacesModule::create_workspace_interactively()
+WorkspacePicker& WorkspacesModule::picker()
 {
-    bool ok = false;
-    auto name = QInputDialog::getText(&m_window, "New Workspace", "Name:", QLineEdit::Normal, {}, &ok);
-    if (!ok)
-        return;
-    auto tint = TINTS[m_model.workspaces().size() % std::size(TINTS)].rgb;
-    auto workspace = m_model.create_workspace(to_std_string(name), {}, tint);
-    switch_to(workspace);
-    changed();
+    if (!m_picker) {
+        m_picker = new WorkspacePicker(&m_window);
+        m_picker->on_size_changed = [this] { place_picker(); };
+    }
+    m_picker->update_chrome_style(Ladybird::Theme::chrome_palette(m_window));
+    return *m_picker;
 }
 
-void WorkspacesModule::rename_workspace_interactively(Workspaces::WorkspaceId workspace)
+void WorkspacesModule::place_picker()
+{
+    if (!m_picker)
+        return;
+    m_picker->adjustSize();
+    // Over the switcher it came from, when the sidebar shows one; otherwise dropping from the top of the window, like the
+    // Command Palette.
+    if (m_switcher && m_switcher->isVisible() && m_switcher->window() == &m_window) {
+        Ladybird::move_popover_above(*m_picker, *m_switcher, Ladybird::PopoverAlignment::Leading);
+        m_picker->set_anchor_point(m_switcher->mapToGlobal(QPoint(m_switcher->width() / 2, 0)));
+        return;
+    }
+    auto size = m_picker->size();
+    auto top = max(48, m_window.height() / 8);
+    auto top_left = m_window.mapToGlobal(QPoint((m_window.width() - size.width()) / 2, top));
+    if (auto* screen = m_window.screen()) {
+        auto available = screen->availableGeometry();
+        top_left.setX(clamp(top_left.x(), available.left(), max(available.left(), available.right() - size.width())));
+        top_left.setY(clamp(top_left.y(), available.top(), max(available.top(), available.bottom() - size.height())));
+    }
+    m_picker->move(top_left);
+    m_picker->set_anchor_point(m_window.mapToGlobal(QPoint(m_window.width() / 2, top)));
+}
+
+void WorkspacesModule::create_workspace_interactively(Function<void(Workspaces::WorkspaceId)> on_created)
+{
+    auto& picker = this->picker();
+    std::vector<std::string> names;
+    for (auto const& workspace : m_model.workspaces())
+        names.push_back(workspace.name);
+    picker.on_accept = [this, on_created = move(on_created)](WorkspacePicker::Result result) {
+        auto workspace = m_model.create_workspace(result.name, result.icon, result.tint);
+        if (on_created)
+            on_created(workspace);
+        else
+            switch_to(workspace);
+        changed();
+    };
+    picker.show_presets(std::move(names), Workspaces::default_tint_for_new_workspace(m_model.workspaces().size()));
+    place_picker();
+    picker.show();
+}
+
+void WorkspacesModule::edit_workspace_interactively(Workspaces::WorkspaceId workspace)
 {
     auto const* info = m_model.workspace(workspace);
     if (!info)
         return;
-    bool ok = false;
-    auto name = QInputDialog::getText(&m_window, "Rename Workspace", "Name:", QLineEdit::Normal, to_qstring(info->name), &ok);
-    if (ok && m_model.rename_workspace(workspace, to_std_string(name)))
-        changed();
-}
-
-void WorkspacesModule::change_icon_interactively(Workspaces::WorkspaceId workspace)
-{
-    auto const* info = m_model.workspace(workspace);
-    if (!info)
-        return;
-    bool ok = false;
-    auto icon = QInputDialog::getText(&m_window, "Workspace Icon", "An emoji or a letter (leave empty for the name's first letter):", QLineEdit::Normal, to_qstring(info->icon), &ok);
-    if (ok && m_model.set_icon(workspace, to_std_string(icon.trimmed())))
-        changed();
+    auto& picker = this->picker();
+    picker.on_accept = [this, workspace](WorkspacePicker::Result result) {
+        auto renamed = m_model.rename_workspace(workspace, result.name);
+        auto icon_changed = m_model.set_icon(workspace, result.icon);
+        auto tint_changed = m_model.set_tint(workspace, result.tint);
+        if (renamed || icon_changed || tint_changed)
+            changed();
+    };
+    picker.show_editor(*info);
+    place_picker();
+    picker.show();
 }
 
 void WorkspacesModule::delete_workspace(Workspaces::WorkspaceId workspace)
@@ -599,12 +623,11 @@ void WorkspacesModule::delete_workspace(Workspaces::WorkspaceId workspace)
 void WorkspacesModule::fill_workspace_menu(QMenu& menu, Workspaces::WorkspaceId workspace)
 {
     auto palette = Ladybird::Theme::chrome_palette(m_window);
-    menu.addAction("&Rename\xE2\x80\xA6", [this, workspace] { rename_workspace_interactively(workspace); });
-    menu.addAction("Change &Icon\xE2\x80\xA6", [this, workspace] { change_icon_interactively(workspace); });
+    menu.addAction("&Edit Workspace\xE2\x80\xA6", [this, workspace] { edit_workspace_interactively(workspace); });
     auto* colors = menu.addMenu("&Color");
-    for (auto const& tint : TINTS) {
+    for (auto const& tint : Workspaces::TINTS) {
         Workspaces::Workspace sample { .id = 0, .name = "", .icon = "", .tint = tint.rgb };
-        colors->addAction(workspace_badge_icon(sample, true, palette), tint.name, [this, workspace, rgb = tint.rgb] {
+        colors->addAction(workspace_badge_icon(sample, true, palette), QString::fromUtf8(tint.name.data(), static_cast<qsizetype>(tint.name.size())), [this, workspace, rgb = tint.rgb] {
             if (m_model.set_tint(workspace, rgb))
                 changed();
         });
@@ -643,7 +666,7 @@ void WorkspacesModule::fill_overview_menu(QMenu& menu)
     menu.addSeparator();
     menu.addAction("&New Workspace\xE2\x80\xA6", [this] { create_workspace_interactively(); });
     auto active = m_model.active_workspace();
-    menu.addAction("&Rename Current Workspace\xE2\x80\xA6", [this, active] { rename_workspace_interactively(active); });
+    menu.addAction("&Edit Current Workspace\xE2\x80\xA6", [this, active] { edit_workspace_interactively(active); });
     auto* remove = menu.addAction("&Delete Current Workspace", [this, active] { delete_workspace(active); });
     remove->setEnabled(m_model.workspaces().size() > 1);
 }
@@ -666,14 +689,10 @@ void WorkspacesModule::attach_tab_context_menu(Ladybird::Tab& tab, QMenu& menu)
         }
         submenu->addSeparator();
         submenu->addAction("New Workspace\xE2\x80\xA6", [this, tab_pointer] {
-            bool ok = false;
-            auto name = QInputDialog::getText(&m_window, "New Workspace", "Name:", QLineEdit::Normal, {}, &ok);
-            if (!ok || !tab_pointer)
-                return;
-            auto tint = TINTS[m_model.workspaces().size() % std::size(TINTS)].rgb;
-            auto workspace = m_model.create_workspace(to_std_string(name), {}, tint);
-            move_tab_to(*tab_pointer, workspace);
-            changed();
+            create_workspace_interactively([this, tab_pointer](Workspaces::WorkspaceId workspace) {
+                if (tab_pointer)
+                    move_tab_to(*tab_pointer, workspace);
+            });
         });
     });
     menu.addMenu(submenu);
@@ -777,7 +796,7 @@ void WorkspacesModule::run(WorkspacesCommand command, size_t slot)
         create_workspace_interactively();
         break;
     case WorkspacesCommand::RenameWorkspace:
-        rename_workspace_interactively(m_model.active_workspace());
+        edit_workspace_interactively(m_model.active_workspace());
         break;
     case WorkspacesCommand::DeleteWorkspace:
         delete_workspace(m_model.active_workspace());

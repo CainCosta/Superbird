@@ -42,7 +42,7 @@ struct WorkspacesActionDefinition {
 
 inline constexpr Array<WorkspacesActionDefinition, 6> WORKSPACES_ACTIONS { {
     { WorkspacesCommand::NewWorkspace, "workspaces.new"sv, "New Workspace"sv },
-    { WorkspacesCommand::RenameWorkspace, "workspaces.rename"sv, "Rename Current Workspace"sv },
+    { WorkspacesCommand::RenameWorkspace, "workspaces.rename"sv, "Edit Current Workspace (Rename, Icon, Color)"sv },
     { WorkspacesCommand::DeleteWorkspace, "workspaces.delete"sv, "Delete Current Workspace"sv },
     { WorkspacesCommand::NextWorkspace, "workspaces.next"sv, "Next Workspace"sv },
     { WorkspacesCommand::PreviousWorkspace, "workspaces.previous"sv, "Previous Workspace"sv },

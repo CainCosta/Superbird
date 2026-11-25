@@ -6,6 +6,7 @@
 
 #include <UI/Qt/ChromeStyle.h>
 #include <UI/Qt/Icon.h>
+#include <UI/Qt/Superbird/Modules/Workspaces/WorkspaceGlyphs.h>
 #include <UI/Qt/Superbird/Modules/Workspaces/WorkspaceSwitcher.h>
 #include <UI/Qt/Theme.h>
 
@@ -53,12 +54,18 @@ static void paint_badge(QPainter& painter, QRectF const& rect, Workspaces::Works
     path.addRoundedRect(rect, rect.width() * 0.3, rect.width() * 0.3);
     painter.fillPath(path, fill);
 
+    // White on a tint or the accent, otherwise the chrome's text color.
+    auto on_fill = active || workspace.tint.has_value() ? QColor(Qt::white) : Ladybird::Theme::chrome(palette).text;
+    if (auto glyph = Workspaces::glyph_from_icon(workspace.icon); glyph.has_value()) {
+        auto inset = rect.width() * 0.19;
+        paint_workspace_glyph(painter, rect.adjusted(inset, inset, -inset, -inset), *glyph, on_fill);
+        return;
+    }
+
     auto font = painter.font();
     font.setPixelSize(qRound(rect.height() * 0.6));
     font.setBold(true);
     painter.setFont(font);
-    // White on a tint or the accent, otherwise the chrome's text color.
-    auto on_fill = active || workspace.tint.has_value() ? QColor(Qt::white) : Ladybird::Theme::chrome(palette).text;
     painter.setPen(on_fill);
     painter.drawText(rect, Qt::AlignCenter, badge_text(workspace));
 }

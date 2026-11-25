@@ -29,6 +29,7 @@ class Tab;
 namespace Superbird {
 
 class ModuleRegistry;
+class WorkspacePicker;
 class WorkspaceSwitcher;
 
 // Workspaces: named sets of a window's tabs. Only the active workspace's tabs show, in the stock tab bar (horizontal
@@ -77,9 +78,11 @@ private:
     Ladybird::Tab* tab_for_key(Workspaces::TabKey);
 
     void switch_to(Workspaces::WorkspaceId);
-    void create_workspace_interactively();
-    void rename_workspace_interactively(Workspaces::WorkspaceId);
-    void change_icon_interactively(Workspaces::WorkspaceId);
+    // Opens the picker of presets and custom workspaces. What it makes is switched to, or handed to `on_created`.
+    void create_workspace_interactively(Function<void(Workspaces::WorkspaceId)> on_created = {});
+    void edit_workspace_interactively(Workspaces::WorkspaceId);
+    WorkspacePicker& picker();
+    void place_picker();
     void delete_workspace(Workspaces::WorkspaceId);
     Vector<Ladybird::Tab*> tab_with_branch(Ladybird::Tab&) const;
     void move_tab_to(Ladybird::Tab&, Workspaces::WorkspaceId);
@@ -103,6 +106,7 @@ private:
     bool m_current_tab_closing { false };
 
     QPointer<WorkspaceSwitcher> m_switcher;
+    QPointer<WorkspacePicker> m_picker;
     HashMap<Ladybird::Tab*, QPointer<QAction>> m_pill_actions;
     HashMap<Ladybird::Tab*, QPointer<QMenu>> m_tab_menus;
     Vector<QPointer<QShortcut>> m_shortcuts;
