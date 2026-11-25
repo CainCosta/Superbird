@@ -1,0 +1,165 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Superbird <superbird@local>
+Date: Tue, 24 Nov 2026 18:42:24 -0600
+Subject: [PATCH] Hub: Add a read-only reader document snapshot for Superbird
+ Reader View
+
+
+diff --git a/Libraries/LibWebCommon/WebView/PageInfo.h b/Libraries/LibWebCommon/WebView/PageInfo.h
+index d80804d8..64309454 100644
+--- a/Libraries/LibWebCommon/WebView/PageInfo.h
++++ b/Libraries/LibWebCommon/WebView/PageInfo.h
+@@ -17,6 +17,8 @@ enum class PageInfoType {
+     StackingContextTree = 1 << 5,
+     AccessibilityTree = 1 << 6,
+     DisplayList = 1 << 7,
++    // The active document serialized as HTML, for Superbird's Reader View.
++    DocumentHTML = 1 << 8,
+ };
+ 
+ AK_ENUM_BITWISE_OPERATORS(PageInfoType);
+diff --git a/Services/Hub/ConnectionFromUI.cpp b/Services/Hub/ConnectionFromUI.cpp
+index 43435a1b..4020868b 100644
+--- a/Services/Hub/ConnectionFromUI.cpp
++++ b/Services/Hub/ConnectionFromUI.cpp
+@@ -545,6 +545,23 @@ void ConnectionFromUI::view_request_page_dumps(u64 view_id, u64 request_id)
+     });
+ }
+ 
++// The page's document as HTML, read-only, for Superbird's Reader View to extract its article from.
++void ConnectionFromUI::view_request_reader_document(u64 view_id, u64 request_id)
++{
++    auto* view = find_view(view_id);
++    if (!view) {
++        async_view_reader_document(view_id, request_id, {});
++        return;
++    }
++    auto promise = view->request_internal_page_info(WebView::PageInfoType::DocumentHTML);
++    promise->when_resolved([this, view_id, request_id](String& html) {
++        async_view_reader_document(view_id, request_id, html);
++    });
++    promise->when_rejected([this, view_id, request_id](Error const&) {
++        async_view_reader_document(view_id, request_id, {});
++    });
++}
++
+ void ConnectionFromUI::request_platform_features_description(u64 request_id)
+ {
+     async_platform_features_description(request_id, Application::the().describe_platform_features_for_report({}));
+diff --git a/Services/Hub/ConnectionFromUI.h b/Services/Hub/ConnectionFromUI.h
+index 8929df17..06911ac1 100644
+--- a/Services/Hub/ConnectionFromUI.h
++++ b/Services/Hub/ConnectionFromUI.h
+@@ -117,6 +117,7 @@ private:
+     virtual void view_request_selected_text(u64 view_id, u64 request_id) override;
+     virtual void view_request_close_preflight(u64 view_id, u64 request_id) override;
+     virtual void view_request_page_dumps(u64 view_id, u64 request_id) override;
++    virtual void view_request_reader_document(u64 view_id, u64 request_id) override;
+     virtual void request_platform_features_description(u64 request_id) override;
+     virtual void view_prepare_for_immediate_close(u64 view_id) override;
+     virtual void view_prepare_for_close_without_prompting(u64 view_id, u64 close_id) override;
+diff --git a/Services/Hub/HubClient.ipc b/Services/Hub/HubClient.ipc
+index ac51cdf8..77fd7d5d 100644
+--- a/Services/Hub/HubClient.ipc
++++ b/Services/Hub/HubClient.ipc
+@@ -262,6 +262,7 @@ endpoint HubClient
+     view_selected_text(u64 view_id, u64 request_id, Optional<ByteString> text) =|
+     view_close_preflight_finished(u64 view_id, u64 request_id, bool may_close) =|
+     view_page_dumps(u64 view_id, u64 request_id, Optional<String> dumps) =|
++    view_reader_document(u64 view_id, u64 request_id, Optional<String> html) =|
+     platform_features_description(u64 request_id, ByteString description) =|
+     pip_open(u64 view_id, u64 owner_view_id, Gfx::IntSize video_size) =|
+     pip_hide(u64 view_id) =|
+diff --git a/Services/Hub/HubServer.ipc b/Services/Hub/HubServer.ipc
+index 6bbc856b..45706479 100644
+--- a/Services/Hub/HubServer.ipc
++++ b/Services/Hub/HubServer.ipc
+@@ -201,6 +201,7 @@ endpoint HubServer
+     view_request_selected_text(u64 view_id, u64 request_id) =|
+     view_request_close_preflight(u64 view_id, u64 request_id) =|
+     view_request_page_dumps(u64 view_id, u64 request_id) =|
++    view_request_reader_document(u64 view_id, u64 request_id) =|
+     request_platform_features_description(u64 request_id) =|
+     view_prepare_for_immediate_close(u64 view_id) =|
+     view_prepare_for_close_without_prompting(u64 view_id, u64 close_id) =|
+diff --git a/Services/WebContent/ConnectionFromClient.cpp b/Services/WebContent/ConnectionFromClient.cpp
+index f9b38875..00029b27 100644
+--- a/Services/WebContent/ConnectionFromClient.cpp
++++ b/Services/WebContent/ConnectionFromClient.cpp
+@@ -2958,6 +2958,13 @@ void ConnectionFromClient::request_internal_page_info(Web::PageId page_id, WebVi
+         append_display_list(page->page(), builder);
+     }
+ 
++    if (has_flag(type, WebView::PageInfoType::DocumentHTML)) {
++        if (auto document = page->page().local_traversable()->active_document(); document && document->document_element()) {
++            if (auto html = document->document_element()->outer_html(); !html.is_error())
++                builder.append(html.value().to_utf8());
++        }
++    }
++
+     if (has_flag(type, WebView::PageInfoType::AccessibilityTree)) {
+         if (!builder.is_empty())
+             builder.append("\n"sv);
+diff --git a/UI/Qt/HubConnection.cpp b/UI/Qt/HubConnection.cpp
+index 8b59c058..478b8032 100644
+--- a/UI/Qt/HubConnection.cpp
++++ b/UI/Qt/HubConnection.cpp
+@@ -743,6 +743,13 @@ void HubConnection::view_page_dumps(u64 view_id, u64 request_id, Optional<String
+         view->did_get_page_dumps(request_id, move(dumps));
+ }
+ 
++// NB: The reader document waits among the page dumps, which take the same kind of answer.
++void HubConnection::view_reader_document(u64 view_id, u64 request_id, Optional<String> html)
++{
++    if (auto* view = RemoteView::find(view_id))
++        view->did_get_page_dumps(request_id, move(html));
++}
++
+ void HubConnection::fetch_platform_features_description(Function<void(ByteString)> callback)
+ {
+     auto request_id = m_next_request_id++;
+diff --git a/UI/Qt/HubConnection.h b/UI/Qt/HubConnection.h
+index c6e410e6..3b9c6690 100644
+--- a/UI/Qt/HubConnection.h
++++ b/UI/Qt/HubConnection.h
+@@ -86,6 +86,7 @@ private:
+     virtual void view_selected_text(u64 view_id, u64 request_id, Optional<ByteString> text) override;
+     virtual void view_close_preflight_finished(u64 view_id, u64 request_id, bool may_close) override;
+     virtual void view_page_dumps(u64 view_id, u64 request_id, Optional<String> dumps) override;
++    virtual void view_reader_document(u64 view_id, u64 request_id, Optional<String> html) override;
+     virtual void platform_features_description(u64 request_id, ByteString description) override;
+     virtual void pip_open(u64 view_id, u64 owner_view_id, Gfx::IntSize video_size) override;
+     virtual void pip_hide(u64 view_id) override;
+diff --git a/UI/Qt/RemoteView.cpp b/UI/Qt/RemoteView.cpp
+index ca346e15..5ca432b3 100644
+--- a/UI/Qt/RemoteView.cpp
++++ b/UI/Qt/RemoteView.cpp
+@@ -335,6 +335,15 @@ NonnullRefPtr<Core::Promise<String>> RemoteView::request_page_dumps()
+     return promise;
+ }
+ 
++NonnullRefPtr<Core::Promise<String>> RemoteView::request_reader_document()
++{
++    auto promise = Core::Promise<String>::construct();
++    auto request_id = m_next_request_id++;
++    m_pending_page_dumps.set(request_id, promise);
++    HubConnection::the().async_view_request_reader_document(view_id(), request_id);
++    return promise;
++}
++
+ void RemoteView::did_get_page_dumps(u64 request_id, Optional<String> dumps)
+ {
+     auto promise = m_pending_page_dumps.take(request_id);
+diff --git a/UI/Qt/RemoteView.h b/UI/Qt/RemoteView.h
+index c33ee667..a7f8ba1a 100644
+--- a/UI/Qt/RemoteView.h
++++ b/UI/Qt/RemoteView.h
+@@ -63,6 +63,8 @@ public:
+ 
+     WebView::WebCompatReport::Page describe_page() const;
+     NonnullRefPtr<Core::Promise<String>> request_page_dumps();
++    // The page's document serialized as HTML, for Superbird's Reader View.
++    NonnullRefPtr<Core::Promise<String>> request_reader_document();
+     void did_start_navigation_load(URL::URL const&);
+     void did_finish_navigation_load(URL::URL const&);
+ 

@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Superbird <superbird@local>
+Date: Tue, 24 Nov 2026 18:44:13 -0600
+Subject: [PATCH] LibWebView: Keep a view's own scripting switch on every page
+ it uses
+
+
+diff --git a/Libraries/LibWebView/ViewImplementation.cpp b/Libraries/LibWebView/ViewImplementation.cpp
+index 628b31c1..ce53d07d 100644
+--- a/Libraries/LibWebView/ViewImplementation.cpp
++++ b/Libraries/LibWebView/ViewImplementation.cpp
+@@ -3209,6 +3209,8 @@ void ViewImplementation::debug_request(ByteString const& request, ByteString con
+         dbgln("{}", page().dump_process_tree());
+         return;
+     }
++    if (request == "scripting"sv)
++        m_scripting_enabled = argument == "on"sv;
+ 
+     page().async_debug_request(request, argument);
+ }
+@@ -4136,6 +4138,8 @@ void ViewImplementation::prepare_page_for_navigable(WebContentPage& page)
+     if (Application::browser_options().webdriver_browser_endpoint.has_value())
+         Application::the().push_webdriver_session_config(page);
+     Application::the().apply_view_options({}, *this, page);
++    if (m_scripting_enabled.has_value())
++        page.async_debug_request("scripting"sv, *m_scripting_enabled ? "on"sv : "off"sv);
+     send_force_dark(page);
+     send_preferences_to_page(page);
+     if (auto screens = screen_rects(); screens.has_value())
+diff --git a/Libraries/LibWebView/ViewImplementation.h b/Libraries/LibWebView/ViewImplementation.h
+index 136c2ae9..399b19b7 100644
+--- a/Libraries/LibWebView/ViewImplementation.h
++++ b/Libraries/LibWebView/ViewImplementation.h
+@@ -1087,6 +1087,9 @@ protected:
+     };
+     Vector<InputToOpenLinkInNewTab> m_inputs_to_open_links_in_new_tabs;
+     u64 m_next_input_event_id { 1 };
++    // A scripting switch made for this view alone (such as Superbird's script-free Reader View), which every page that
++    // hosts its documents keeps, rather than the application's.
++    Optional<bool> m_scripting_enabled;
+     bool m_debugger_is_attached { false };
+     bool m_debugger_paused { false };
+     Compositing::OverlayPointerState<Compositing::PausedDebuggerOverlayAction> m_debugger_overlay_pointer_state;

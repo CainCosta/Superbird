@@ -43,3 +43,23 @@ if (SUPERBIRD_MODULE_COMMAND_PALETTE)
         Superbird/Modules/CommandPalette/PaletteRanking.h
     )
 endif()
+
+if (SUPERBIRD_MODULE_READER_VIEW)
+    target_compile_definitions(ladybird_impl PUBLIC SUPERBIRD_MODULE_READER_VIEW=1)
+    target_sources(ladybird_impl PRIVATE
+        Superbird/Modules/ReaderView/ArticleExtractor.cpp
+        Superbird/Modules/ReaderView/ArticleExtractor.h
+        Superbird/Modules/ReaderView/HtmlTree.cpp
+        Superbird/Modules/ReaderView/HtmlTree.h
+        Superbird/Modules/ReaderView/ReaderDocument.cpp
+        Superbird/Modules/ReaderView/ReaderDocument.h
+        Superbird/Modules/ReaderView/ReaderOverlay.cpp
+        Superbird/Modules/ReaderView/ReaderOverlay.h
+        Superbird/Modules/ReaderView/ReaderViewActions.cpp
+        Superbird/Modules/ReaderView/ReaderViewActions.h
+        Superbird/Modules/ReaderView/ReaderViewModule.cpp
+        Superbird/Modules/ReaderView/ReaderViewModule.h
+        Superbird/Modules/ReaderView/UrlResolver.cpp
+        Superbird/Modules/ReaderView/UrlResolver.h
+    )
+endif()

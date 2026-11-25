@@ -15,6 +15,9 @@
 #if defined(SUPERBIRD_MODULE_COMMAND_PALETTE)
 #    include <UI/Qt/Superbird/Modules/CommandPalette/CommandPaletteModule.h>
 #endif
+#if defined(SUPERBIRD_MODULE_READER_VIEW)
+#    include <UI/Qt/Superbird/Modules/ReaderView/ReaderViewModule.h>
+#endif
 
 #include <QHash>
 #include <QKeyEvent>
@@ -47,6 +50,9 @@ void WindowHost::register_compiled_modules()
 #endif
 #if defined(SUPERBIRD_MODULE_COMMAND_PALETTE)
     register_compiled_module(CommandPaletteModule::module_info(), CommandPaletteModule::register_actions);
+#endif
+#if defined(SUPERBIRD_MODULE_READER_VIEW)
+    register_compiled_module(ReaderViewModule::module_info(), ReaderViewModule::register_actions);
 #endif
 }
 
@@ -105,6 +111,9 @@ WindowHost::WindowHost(Ladybird::BrowserWindow& window)
 #if defined(SUPERBIRD_MODULE_COMMAND_PALETTE)
     m_modules.append(make<CommandPaletteModule>(m_window));
 #endif
+#if defined(SUPERBIRD_MODULE_READER_VIEW)
+    m_modules.append(make<ReaderViewModule>(m_window));
+#endif
 
     ModuleRegistry::the().add_observer(*this);
 }
@@ -121,6 +130,15 @@ Ladybird::TreeTabController* WindowHost::tree_tab_controller() const
 #else
     return nullptr;
 #endif
+}
+
+SuperbirdModule* WindowHost::module(StringView id) const
+{
+    for (auto const& module : m_modules) {
+        if (module->id() == id)
+            return module.ptr();
+    }
+    return nullptr;
 }
 
 void WindowHost::module_enabled_changed(StringView module_id, bool enabled)

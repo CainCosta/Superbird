@@ -50,6 +50,8 @@ public:
     virtual ~WindowHost() override;
 
     Ladybird::TreeTabController* tree_tab_controller() const;
+    // This window's instance of a compiled module, whether or not it is enabled.
+    SuperbirdModule* module(StringView id) const;
 
     void on_settings_changed();
     void on_chrome_style_changed();
@@ -73,6 +75,7 @@ public:
 
     // The labels every enabled module gives this tab's context, in module order.
     Vector<String> tab_context(Ladybird::Tab& tab);
+
 
 private:
     virtual void module_enabled_changed(StringView module_id, bool enabled) override;

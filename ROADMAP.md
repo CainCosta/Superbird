@@ -83,6 +83,8 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 
 ### M2 — Reader View *(Promoted to Wave 1)*
 *Inspired by Firefox Reader View, Safari Reader, and Brave Speedreader.*
+
+> **Status: ✅ Shipped (M2).** `Modules/ReaderView/` adds a pure C++23 HTML tree + `ArticleExtractor` (scoring, allow-list sanitizer, URL resolution, reading time, readerability) and a script-free reader `WebContentView` overlay with font/size/line-height/width/theme controls. Patches: 0007 read-only `view_request_reader_document` Hub snapshot (48 lines), 0008 `LocationEdit::add_page_action` hook (41), 0009 per-view scripting switch that survives page changes (7, needed to guarantee JS stays off). Shortcut is `Ctrl+Cmd+R` on macOS (Cmd+Opt/Shift+R already reload). Design: `docs/design/M2-reader-view.md`.
 - **What it does:** Strips navigation clutter, sidebars, and noisy layout from article pages and renders clean, readable typography — **without mutating or losing your place on the original page**.
   - Toggle via a subtle book icon in the address bar (shown when the page looks article-like, or always triggerable via Command Palette / `Cmd/Ctrl+Alt+R`).
   - Clean floating controls for:
@@ -140,7 +142,7 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 | :--- | :--- | :--- | :--- |
 | **M0** ✅ | Tier 0: Rename to Superbird + coexistence (`Superbird` profile/bundle/lock) + `SuperbirdModule` registry + `about:settings -> Superbird` + migrate Tree Tabs | Small (Profile, App identity, 1 `WindowHost` seam, 1 Settings tab) | Both browsers run side-by-side; Tree Tabs toggleable on/off cleanly; green macOS + Linux CI |
 | **M1** ✅ | Command Palette (`Cmd/Ctrl+K` / `F2`) + action bus | Tiny (1 shortcut hook) | Fuzzy/math unit tests + opens & executes actions on macOS + Linux |
-| **M2** | Reader View (Hub IPC extraction + C++23 `ArticleExtractor` + reader overlay & typography controls) | Small (1 read-only Hub/RemoteView IPC message + address bar icon hook) | `ArticleExtractor` sanitization & scoring unit tests + green macOS + Linux CI |
+| **M2** ✅ | Reader View (Hub IPC extraction + C++23 `ArticleExtractor` + reader overlay & typography controls) | Small (1 read-only Hub/RemoteView IPC message + address bar icon hook) | `ArticleExtractor` sanitization & scoring unit tests + green macOS + Linux CI |
 | **M3** | Workspaces (Spaces) + `Workspaces.db` + sidebar/toolbar switcher | Small (`TabWidget` / `TreeTabView` filter seam) | Workspace model unit tests + works with both Tree Tabs and regular tabs |
 | **M4** | Split View (2-pane / grid tab tiling) | Small (`TabWidget` page host seam) | Split layout unit tests + focus/close/resize stability |
 | **M5** | Glance (Quick Peek floating sheet + promote to tab) | Tiny (link modifier / context menu hook) | Glance lifecycle tests + promotes cleanly into Tree Tabs |

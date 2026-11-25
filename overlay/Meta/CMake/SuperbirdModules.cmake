@@ -6,3 +6,4 @@ include_guard()
 # enabled option into a SUPERBIRD_MODULE_<NAME> compile definition on ladybird_impl.
 option(SUPERBIRD_MODULE_TREE_TABS "Build the Superbird Tree-Style Tabs module" ON)
 option(SUPERBIRD_MODULE_COMMAND_PALETTE "Build the Superbird Command Palette module" ON)
+option(SUPERBIRD_MODULE_READER_VIEW "Build the Superbird Reader View module" ON)

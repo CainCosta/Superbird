@@ -100,3 +100,21 @@ CP_DIR="$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/CommandPalette"
     "$TMP_DIR/ak_stubs.cpp" \
     -o "$TMP_DIR/test_command_palette"
 "$TMP_DIR/test_command_palette"
+
+RV_DIR="$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/ReaderView"
+"$CXX" "${COMMON_FLAGS[@]}" \
+    "$ROOT_DIR/tests/TestReaderView.cpp" \
+    "$RV_DIR/HtmlTree.cpp" \
+    "$RV_DIR/UrlResolver.cpp" \
+    "$RV_DIR/ArticleExtractor.cpp" \
+    "$RV_DIR/ReaderDocument.cpp" \
+    -o "$TMP_DIR/test_reader_view"
+"$TMP_DIR/test_reader_view"
+
+"$CXX" "${COMMON_FLAGS[@]}" \
+    "$ROOT_DIR/tests/TestReaderViewActions.cpp" \
+    "$RV_DIR/ReaderViewActions.cpp" \
+    "$ROOT_DIR/overlay/UI/Qt/Superbird/Core/ModuleRegistry.cpp" \
+    "$TMP_DIR/ak_stubs.cpp" \
+    -o "$TMP_DIR/test_reader_view_actions"
+"$TMP_DIR/test_reader_view_actions"
