@@ -1,0 +1,106 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 08:53:13 -0600
+Subject: [PATCH] UI/Qt: Select tabs by number among the tabs that show, with
+ Shift
+
+Cmd/Ctrl+Shift+1-9 select a tab by its number, counting only the tabs
+that show, so a tab another Superbird workspace hides is never picked.
+Cmd/Ctrl+1-9 do the same unless Superbird Workspaces takes them for
+switching workspaces. The All Tabs popover also leaves hidden tabs out.
+
+diff --git a/UI/Qt/BrowserWindow.cpp b/UI/Qt/BrowserWindow.cpp
+index dd3d8f2d..20f6e514 100644
+--- a/UI/Qt/BrowserWindow.cpp
++++ b/UI/Qt/BrowserWindow.cpp
+@@ -516,17 +516,35 @@ void BrowserWindow::initialize_application_actions()
+     addAction(application.reset_zoom_action());
+     addAction(application.quit_action());
+ 
+-    for (int i = 0; i < 8; ++i) {
+-        new QShortcut(QKeySequence(Qt::CTRL | static_cast<Qt::Key>(Qt::Key_1 + i)), this, [this, i]() {
+-            if (m_tabs_container->count() > 1)
+-                m_tabs_container->set_current_index(min(i, m_tabs_container->count() - 1));
+-        });
++    // Superbird: Cmd/Ctrl+Shift+1-9 select a tab by its number, and so do Cmd/Ctrl+1-9 unless a Superbird module
++    //            (Workspaces) takes them.
++    for (int i = 0; i < 9; ++i) {
++        auto key = static_cast<Qt::Key>(Qt::Key_1 + i);
++        new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | key), this, [this, i]() { select_tab_by_number(i); });
++        m_plain_tab_number_shortcuts.append(new QShortcut(QKeySequence(Qt::CTRL | key), this, [this, i]() { select_tab_by_number(i); }));
+     }
++}
+ 
+-    new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_9), this, [this]() {
+-        if (m_tabs_container->count() > 1)
+-            m_tabs_container->set_current_index(m_tabs_container->count() - 1);
+-    });
++void BrowserWindow::select_tab_by_number(int number)
++{
++    // Superbird: Only the tabs that show count, so a tab another workspace hides is never picked. Nine is the last tab.
++    Vector<int> indices;
++    for (int index = 0; index < m_tabs_container->count(); ++index) {
++        if (auto* tab = tab_at(index); tab && !m_superbird->is_tab_hidden(*tab))
++            indices.append(index);
++    }
++    if (indices.size() < 2)
++        return;
++    auto position = number == 8 ? indices.size() - 1 : min(static_cast<size_t>(number), indices.size() - 1);
++    m_tabs_container->set_current_index(indices[position]);
++}
++
++void BrowserWindow::set_plain_tab_number_shortcuts_enabled(bool enabled)
++{
++    for (auto& shortcut : m_plain_tab_number_shortcuts) {
++        if (shortcut)
++            shortcut->setEnabled(enabled);
++    }
+ }
+ 
+ void BrowserWindow::initialize_application_menu()
+diff --git a/UI/Qt/BrowserWindow.h b/UI/Qt/BrowserWindow.h
+index d712aa68..a287ec72 100644
+--- a/UI/Qt/BrowserWindow.h
++++ b/UI/Qt/BrowserWindow.h
+@@ -29,6 +29,7 @@
+ #include <QMainWindow>
+ #include <QPushButton>
+ 
++class QShortcut;
+ class QIcon;
+ class QPropertyAnimation;
+ class QTimer;
+@@ -173,6 +174,10 @@ public:
+     Tab* tab_at(int index) const { return m_tabs_container->tab(index); }
+     TabWidget& tab_widget() const { return *m_tabs_container; }
+     Superbird::WindowHost& superbird() const { return *m_superbird; }
++    // Superbird: Selects the tab of the given number (0-8, where 8 is the last tab) among the tabs that show.
++    void select_tab_by_number(int number);
++    // Superbird Workspaces takes Cmd/Ctrl+1-9 for itself, leaving Cmd/Ctrl+Shift+1-9 to select tabs.
++    void set_plain_tab_number_shortcuts_enabled(bool);
+     WindowToolbar& toolbar() const { return m_tabs_container->toolbar(); }
+     BookmarksBar& bookmarks_bar() const { return m_tabs_container->bookmarks_bar(); }
+     // Closes a tab that isn't worth reopening, such as an empty tab that other tabs took the place of.
+@@ -349,6 +354,8 @@ private:
+     WebView::IsPrivate m_is_private { WebView::IsPrivate::No };
+ 
+     TabWidget* m_tabs_container { nullptr };
++    // NB: Declared before the WindowHost, so its modules can still reach these while they go.
++    Vector<QPointer<QShortcut>> m_plain_tab_number_shortcuts;
+     NonnullOwnPtr<Superbird::WindowHost> m_superbird;
+     Tab* m_current_tab { nullptr };
+     Array<QPointer<PageCard>, 2> m_page_cards;
+diff --git a/UI/Qt/TabBar.cpp b/UI/Qt/TabBar.cpp
+index 354dfea2..046d019b 100644
+--- a/UI/Qt/TabBar.cpp
++++ b/UI/Qt/TabBar.cpp
+@@ -4791,6 +4791,9 @@ void TabWidget::update_all_tabs_entries()
+     Vector<AllTabsPopover::Entry> entries;
+     entries.ensure_capacity(count());
+     for (int index = 0; index < count(); ++index) {
++        // Superbird: A tab another workspace hides isn't listed.
++        if (!m_tab_bar->isTabVisible(index))
++            continue;
+         auto* tab = this->tab(index);
+         auto url = tab->url();
+         entries.unchecked_append({

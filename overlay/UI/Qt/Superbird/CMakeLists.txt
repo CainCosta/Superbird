@@ -1,5 +1,7 @@
 target_sources(ladybird_impl PRIVATE
     Superbird/Core/Action.h
+    Superbird/Core/Confirm.cpp
+    Superbird/Core/Confirm.h
     Superbird/Core/Module.h
     Superbird/Core/ModuleRegistry.cpp
     Superbird/Core/ModuleRegistry.h

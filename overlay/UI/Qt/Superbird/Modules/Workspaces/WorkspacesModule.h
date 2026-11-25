@@ -84,6 +84,7 @@ private:
     WorkspacePicker& picker();
     void place_picker();
     void delete_workspace(Workspaces::WorkspaceId);
+    void delete_workspace_now(Workspaces::WorkspaceId);
     Vector<Ladybird::Tab*> tab_with_branch(Ladybird::Tab&) const;
     void move_tab_to(Ladybird::Tab&, Workspaces::WorkspaceId);
     void fill_workspace_menu(QMenu&, Workspaces::WorkspaceId);

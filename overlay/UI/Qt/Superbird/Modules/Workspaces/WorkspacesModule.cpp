@@ -9,6 +9,7 @@
 #include <UI/Qt/BrowserWindow.h>
 #include <UI/Qt/Icon.h>
 #include <UI/Qt/StringUtils.h>
+#include <UI/Qt/Superbird/Core/Confirm.h>
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
 #include <UI/Qt/Superbird/Core/WindowHost.h>
 #include <UI/Qt/Superbird/Modules/Workspaces/WorkspaceStore.h>
@@ -28,7 +29,6 @@
 #include <QEvent>
 #include <QKeySequence>
 #include <QMenu>
-#include <QMessageBox>
 #include <QShortcut>
 #include <QTimer>
 
@@ -38,14 +38,9 @@ static constexpr int PERSIST_DELAY_MS = 500;
 
 static QKeySequence switch_shortcut(size_t slot)
 {
-    auto key = static_cast<Qt::Key>(Qt::Key_1 + static_cast<int>(slot));
-#if defined(AK_OS_MACOS)
-    // NB: Qt::META is the Control key on macOS. Command+digit already selects a tab, and Control+digit is Mission
-    //     Control's "Switch to Desktop N", so workspaces take Control+Option+digit.
-    return QKeySequence(Qt::META | Qt::ALT | key);
-#else
-    return QKeySequence(Qt::CTRL | Qt::ALT | key);
-#endif
+    // NB: Qt::CTRL is the Command key on macOS. The window gives Cmd/Ctrl+1-9 to workspaces while this module is on, and
+    //     selects tabs by number with Cmd/Ctrl+Shift+1-9.
+    return QKeySequence(Qt::CTRL | static_cast<Qt::Key>(Qt::Key_1 + static_cast<int>(slot)));
 }
 
 static QString to_qstring(std::string const& string)
@@ -116,7 +111,7 @@ ModuleInfo WorkspacesModule::module_info()
     return {
         .id = MODULE_ID,
         .name = "Workspaces"sv,
-        .description = "Split a window's tabs into named workspaces (Work, Research, Personal...) and switch between them from the sidebar, the Command Palette or Ctrl+Alt+1-9 (Ctrl+Option+1-9 on macOS)."sv,
+        .description = "Split a window's tabs into named workspaces (Home, Work, School...) and switch between them from the sidebar, the Command Palette or Cmd/Ctrl+1-9. Tabs are then selected by number with Cmd/Ctrl+Shift+1-9."sv,
         .enabled_by_default = true,
     };
 }
@@ -160,6 +155,7 @@ void WorkspacesModule::install()
             m_shortcuts.append(shortcut);
             WindowHost::reserve_shortcut(switch_shortcut(slot));
         }
+        m_window.set_plain_tab_number_shortcuts_enabled(false);
     }
     if (!m_switcher) {
         m_switcher = new WorkspaceSwitcher;
@@ -188,6 +184,7 @@ void WorkspacesModule::uninstall()
         delete m_shortcuts[slot].data();
     }
     m_shortcuts.clear();
+    m_window.set_plain_tab_number_shortcuts_enabled(true);
     if (m_switcher) {
         m_window.tab_widget().set_sidebar_footer_widget(nullptr);
         delete m_switcher.data();
@@ -597,12 +594,22 @@ void WorkspacesModule::delete_workspace(Workspaces::WorkspaceId workspace)
     if (!info)
         return;
     auto tab_count = m_model.tab_count(workspace);
-    if (tab_count > 0) {
-        auto answer = QMessageBox::question(&m_window, "Delete Workspace",
-            QString("Delete \"%1\"? Its %2 tab(s) move to the next workspace.").arg(to_qstring(info->name)).arg(tab_count));
-        if (answer != QMessageBox::Yes)
-            return;
+    if (tab_count == 0) {
+        delete_workspace_now(workspace);
+        return;
     }
+    auto body = tab_count == 1
+        ? QString("Its tab moves to the next workspace.")
+        : QString("Its %1 tabs move to the next workspace.").arg(tab_count);
+    ask_to_confirm(m_window, QString("Delete \u201C%1\u201D?").arg(to_qstring(info->name)), body, "Delete Workspace", [this, workspace] {
+        delete_workspace_now(workspace);
+    });
+}
+
+void WorkspacesModule::delete_workspace_now(Workspaces::WorkspaceId workspace)
+{
+    if (m_model.workspaces().size() < 2 || !m_model.workspace(workspace))
+        return;
     auto was_active = workspace == m_model.active_workspace();
     m_model.remove_workspace(workspace);
     if (was_active) {
