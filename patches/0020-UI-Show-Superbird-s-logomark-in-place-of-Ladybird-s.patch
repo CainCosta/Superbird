@@ -1,0 +1,346 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 14:41:26 -0600
+Subject: [PATCH] UI: Show Superbird's logomark in place of Ladybird's
+
+The menu button, about:version and about:welcome draw Superbird's bird
+with its red star, as on the app icon, in place of Ladybird's Lissajous
+figure. The bird takes Superbird's ink in the neutral theme. The about
+pages' favicon is Superbird's app icon.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+diff --git a/Base/res/icons/48x48/app-browser.png b/Base/res/icons/48x48/app-browser.png
+index 1d628c657027f074bc48024a0853db3961ed5d9b..a43206355fe3db463090632dbb62251074ce487c 100644
+GIT binary patch
+literal 3631
+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
+
+delta 2360
+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
+
+diff --git a/Base/res/ladybird/about-pages/version.html b/Base/res/ladybird/about-pages/version.html
+index eb0cdd8e..ae8f8e69 100644
+--- a/Base/res/ladybird/about-pages/version.html
++++ b/Base/res/ladybird/about-pages/version.html
+@@ -18,21 +18,24 @@
+ 
+             .logomark {
+                 width: 168px;
+-                height: 141px;
++                height: 134px;
+             }
+ 
+-            .logomark path {
+-                stroke: var(--brand-mark);
+-                stroke-width: 0.95;
++            .logomark .bird {
++                fill: var(--brand-mark);
++            }
++
++            .logomark .star {
++                fill: #ff3b4e;
+             }
+ 
+             :root {
+-                --brand-mark: #6a39db;
++                --brand-mark: #252836;
+             }
+ 
+             @media (prefers-color-scheme: dark) {
+                 :root {
+-                    --brand-mark: #b496ff;
++                    --brand-mark: #f2f3f7;
+                 }
+             }
+ 
+@@ -150,15 +153,12 @@
+     <body>
+         <svg
+             class="logomark"
+-            viewBox="-11 -9.2 22 18.4"
+-            fill="none"
+-            stroke-linejoin="round"
++            viewBox="138.89 214.05 746.22 595.9"
+             role="img"
+-            aria-label="Ladybird logomark"
++            aria-label="Superbird logomark"
+         >
+-            <path
+-                d="M0.00 0.00 L0.17 0.21 L0.35 0.42 L0.52 0.63 L0.70 0.84 L0.87 1.05 L1.05 1.26 L1.22 1.47 L1.39 1.68 L1.56 1.88 L1.74 2.09 L1.91 2.29 L2.08 2.49 L2.25 2.69 L2.42 2.89 L2.59 3.08 L2.76 3.28 L2.92 3.47 L3.09 3.66 L3.26 3.85 L3.42 4.03 L3.58 4.21 L3.75 4.39 L3.91 4.57 L4.07 4.74 L4.23 4.91 L4.38 5.07 L4.54 5.23 L4.69 5.39 L4.85 5.55 L5.00 5.70 L5.15 5.85 L5.30 5.99 L5.45 6.13 L5.59 6.26 L5.74 6.39 L5.88 6.52 L6.02 6.64 L6.16 6.76 L6.29 6.87 L6.43 6.98 L6.56 7.08 L6.69 7.18 L6.82 7.27 L6.95 7.36 L7.07 7.45 L7.19 7.52 L7.31 7.60 L7.43 7.67 L7.55 7.73 L7.66 7.79 L7.77 7.84 L7.88 7.88 L7.99 7.93 L8.09 7.96 L8.19 7.99 L8.29 8.02 L8.39 8.04 L8.48 8.05 L8.57 8.06 L8.66 8.06 L8.75 8.06 L8.83 8.05 L8.91 8.04 L8.99 8.02 L9.06 7.99 L9.14 7.96 L9.21 7.93 L9.27 7.88 L9.34 7.84 L9.40 7.79 L9.46 7.73 L9.51 7.67 L9.56 7.60 L9.61 7.52 L9.66 7.45 L9.70 7.36 L9.74 7.27 L9.78 7.18 L9.82 7.08 L9.85 6.98 L9.88 6.87 L9.90 6.76 L9.93 6.64 L9.95 6.52 L9.96 6.39 L9.98 6.26 L9.99 6.13 L9.99 5.99 L10.00 5.85 L10.00 5.70 L10.00 5.55 L9.99 5.39 L9.99 5.23 L9.98 5.07 L9.96 4.91 L9.95 4.74 L9.93 4.57 L9.90 4.39 L9.88 4.21 L9.85 4.03 L9.82 3.85 L9.78 3.66 L9.74 3.47 L9.70 3.28 L9.66 3.08 L9.61 2.89 L9.56 2.69 L9.51 2.49 L9.46 2.29 L9.40 2.09 L9.34 1.88 L9.27 1.68 L9.21 1.47 L9.14 1.26 L9.06 1.05 L8.99 0.84 L8.91 0.63 L8.83 0.42 L8.75 0.21 L8.66 0.00 L8.57 -0.21 L8.48 -0.42 L8.39 -0.63 L8.29 -0.84 L8.19 -1.05 L8.09 -1.26 L7.99 -1.47 L7.88 -1.68 L7.77 -1.88 L7.66 -2.09 L7.55 -2.29 L7.43 -2.49 L7.31 -2.69 L7.19 -2.89 L7.07 -3.08 L6.95 -3.28 L6.82 -3.47 L6.69 -3.66 L6.56 -3.85 L6.43 -4.03 L6.29 -4.21 L6.16 -4.39 L6.02 -4.57 L5.88 -4.74 L5.74 -4.91 L5.59 -5.07 L5.45 -5.23 L5.30 -5.39 L5.15 -5.55 L5.00 -5.70 L4.85 -5.85 L4.69 -5.99 L4.54 -6.13 L4.38 -6.26 L4.23 -6.39 L4.07 -6.52 L3.91 -6.64 L3.75 -6.76 L3.58 -6.87 L3.42 -6.98 L3.26 -7.08 L3.09 -7.18 L2.92 -7.27 L2.76 -7.36 L2.59 -7.45 L2.42 -7.52 L2.25 -7.60 L2.08 -7.67 L1.91 -7.73 L1.74 -7.79 L1.56 -7.84 L1.39 -7.88 L1.22 -7.93 L1.05 -7.96 L0.87 -7.99 L0.70 -8.02 L0.52 -8.04 L0.35 -8.05 L0.17 -8.06 L0.00 -8.06 L-0.17 -8.06 L-0.35 -8.05 L-0.52 -8.04 L-0.70 -8.02 L-0.87 -7.99 L-1.05 -7.96 L-1.22 -7.93 L-1.39 -7.88 L-1.56 -7.84 L-1.74 -7.79 L-1.91 -7.73 L-2.08 -7.67 L-2.25 -7.60 L-2.42 -7.52 L-2.59 -7.45 L-2.76 -7.36 L-2.92 -7.27 L-3.09 -7.18 L-3.26 -7.08 L-3.42 -6.98 L-3.58 -6.87 L-3.75 -6.76 L-3.91 -6.64 L-4.07 -6.52 L-4.23 -6.39 L-4.38 -6.26 L-4.54 -6.13 L-4.69 -5.99 L-4.85 -5.85 L-5.00 -5.70 L-5.15 -5.55 L-5.30 -5.39 L-5.45 -5.23 L-5.59 -5.07 L-5.74 -4.91 L-5.88 -4.74 L-6.02 -4.57 L-6.16 -4.39 L-6.29 -4.21 L-6.43 -4.03 L-6.56 -3.85 L-6.69 -3.66 L-6.82 -3.47 L-6.95 -3.28 L-7.07 -3.08 L-7.19 -2.89 L-7.31 -2.69 L-7.43 -2.49 L-7.55 -2.29 L-7.66 -2.09 L-7.77 -1.88 L-7.88 -1.68 L-7.99 -1.47 L-8.09 -1.26 L-8.19 -1.05 L-8.29 -0.84 L-8.39 -0.63 L-8.48 -0.42 L-8.57 -0.21 L-8.66 -0.00 L-8.75 0.21 L-8.83 0.42 L-8.91 0.63 L-8.99 0.84 L-9.06 1.05 L-9.14 1.26 L-9.21 1.47 L-9.27 1.68 L-9.34 1.88 L-9.40 2.09 L-9.46 2.29 L-9.51 2.49 L-9.56 2.69 L-9.61 2.89 L-9.66 3.08 L-9.70 3.28 L-9.74 3.47 L-9.78 3.66 L-9.82 3.85 L-9.85 4.03 L-9.88 4.21 L-9.90 4.39 L-9.93 4.57 L-9.95 4.74 L-9.96 4.91 L-9.98 5.07 L-9.99 5.23 L-9.99 5.39 L-10.00 5.55 L-10.00 5.70 L-10.00 5.85 L-9.99 5.99 L-9.99 6.13 L-9.98 6.26 L-9.96 6.39 L-9.95 6.52 L-9.93 6.64 L-9.90 6.76 L-9.88 6.87 L-9.85 6.98 L-9.82 7.08 L-9.78 7.18 L-9.74 7.27 L-9.70 7.36 L-9.66 7.45 L-9.61 7.52 L-9.56 7.60 L-9.51 7.67 L-9.46 7.73 L-9.40 7.79 L-9.34 7.84 L-9.27 7.88 L-9.21 7.93 L-9.14 7.96 L-9.06 7.99 L-8.99 8.02 L-8.91 8.04 L-8.83 8.05 L-8.75 8.06 L-8.66 8.06 L-8.57 8.06 L-8.48 8.05 L-8.39 8.04 L-8.29 8.02 L-8.19 7.99 L-8.09 7.96 L-7.99 7.93 L-7.88 7.88 L-7.77 7.84 L-7.66 7.79 L-7.55 7.73 L-7.43 7.67 L-7.31 7.60 L-7.19 7.52 L-7.07 7.45 L-6.95 7.36 L-6.82 7.27 L-6.69 7.18 L-6.56 7.08 L-6.43 6.98 L-6.29 6.87 L-6.16 6.76 L-6.02 6.64 L-5.88 6.52 L-5.74 6.39 L-5.59 6.26 L-5.45 6.13 L-5.30 5.99 L-5.15 5.85 L-5.00 5.70 L-4.85 5.55 L-4.69 5.39 L-4.54 5.23 L-4.38 5.07 L-4.23 4.91 L-4.07 4.74 L-3.91 4.57 L-3.75 4.39 L-3.58 4.21 L-3.42 4.03 L-3.26 3.85 L-3.09 3.66 L-2.92 3.47 L-2.76 3.28 L-2.59 3.08 L-2.42 2.89 L-2.25 2.69 L-2.08 2.49 L-1.91 2.29 L-1.74 2.09 L-1.56 1.88 L-1.39 1.68 L-1.22 1.47 L-1.05 1.26 L-0.87 1.05 L-0.70 0.84 L-0.52 0.63 L-0.35 0.42 L-0.17 0.21 L-0.00 0.00 L0.17 -0.21 L0.35 -0.42 L0.52 -0.63 L0.70 -0.84 L0.87 -1.05 L1.05 -1.26 L1.22 -1.47 L1.39 -1.68 L1.56 -1.88 L1.74 -2.09 L1.91 -2.29 L2.08 -2.49 L2.25 -2.69 L2.42 -2.89 L2.59 -3.08 L2.76 -3.28 L2.92 -3.47 L3.09 -3.66 L3.26 -3.85 L3.42 -4.03 L3.58 -4.21 L3.75 -4.39 L3.91 -4.57 L4.07 -4.74 L4.23 -4.91 L4.38 -5.07 L4.54 -5.23 L4.69 -5.39 L4.85 -5.55 L5.00 -5.70 L5.15 -5.85 L5.30 -5.99 L5.45 -6.13 L5.59 -6.26 L5.74 -6.39 L5.88 -6.52 L6.02 -6.64 L6.16 -6.76 L6.29 -6.87 L6.43 -6.98 L6.56 -7.08 L6.69 -7.18 L6.82 -7.27 L6.95 -7.36 L7.07 -7.45 L7.19 -7.52 L7.31 -7.60 L7.43 -7.67 L7.55 -7.73 L7.66 -7.79 L7.77 -7.84 L7.88 -7.88 L7.99 -7.93 L8.09 -7.96 L8.19 -7.99 L8.29 -8.02 L8.39 -8.04 L8.48 -8.05 L8.57 -8.06 L8.66 -8.06 L8.75 -8.06 L8.83 -8.05 L8.91 -8.04 L8.99 -8.02 L9.06 -7.99 L9.14 -7.96 L9.21 -7.93 L9.27 -7.88 L9.34 -7.84 L9.40 -7.79 L9.46 -7.73 L9.51 -7.67 L9.56 -7.60 L9.61 -7.52 L9.66 -7.45 L9.70 -7.36 L9.74 -7.27 L9.78 -7.18 L9.82 -7.08 L9.85 -6.98 L9.88 -6.87 L9.90 -6.76 L9.93 -6.64 L9.95 -6.52 L9.96 -6.39 L9.98 -6.26 L9.99 -6.13 L9.99 -5.99 L10.00 -5.85 L10.00 -5.70 L10.00 -5.55 L9.99 -5.39 L9.99 -5.23 L9.98 -5.07 L9.96 -4.91 L9.95 -4.74 L9.93 -4.57 L9.90 -4.39 L9.88 -4.21 L9.85 -4.03 L9.82 -3.85 L9.78 -3.66 L9.74 -3.47 L9.70 -3.28 L9.66 -3.08 L9.61 -2.89 L9.56 -2.69 L9.51 -2.49 L9.46 -2.29 L9.40 -2.09 L9.34 -1.88 L9.27 -1.68 L9.21 -1.47 L9.14 -1.26 L9.06 -1.05 L8.99 -0.84 L8.91 -0.63 L8.83 -0.42 L8.75 -0.21 L8.66 -0.00 L8.57 0.21 L8.48 0.42 L8.39 0.63 L8.29 0.84 L8.19 1.05 L8.09 1.26 L7.99 1.47 L7.88 1.68 L7.77 1.88 L7.66 2.09 L7.55 2.29 L7.43 2.49 L7.31 2.69 L7.19 2.89 L7.07 3.08 L6.95 3.28 L6.82 3.47 L6.69 3.66 L6.56 3.85 L6.43 4.03 L6.29 4.21 L6.16 4.39 L6.02 4.57 L5.88 4.74 L5.74 4.91 L5.59 5.07 L5.45 5.23 L5.30 5.39 L5.15 5.55 L5.00 5.70 L4.85 5.85 L4.69 5.99 L4.54 6.13 L4.38 6.26 L4.23 6.39 L4.07 6.52 L3.91 6.64 L3.75 6.76 L3.58 6.87 L3.42 6.98 L3.26 7.08 L3.09 7.18 L2.92 7.27 L2.76 7.36 L2.59 7.45 L2.42 7.52 L2.25 7.60 L2.08 7.67 L1.91 7.73 L1.74 7.79 L1.56 7.84 L1.39 7.88 L1.22 7.93 L1.05 7.96 L0.87 7.99 L0.70 8.02 L0.52 8.04 L0.35 8.05 L0.17 8.06 L0.00 8.06 L-0.17 8.06 L-0.35 8.05 L-0.52 8.04 L-0.70 8.02 L-0.87 7.99 L-1.05 7.96 L-1.22 7.93 L-1.39 7.88 L-1.56 7.84 L-1.74 7.79 L-1.91 7.73 L-2.08 7.67 L-2.25 7.60 L-2.42 7.52 L-2.59 7.45 L-2.76 7.36 L-2.92 7.27 L-3.09 7.18 L-3.26 7.08 L-3.42 6.98 L-3.58 6.87 L-3.75 6.76 L-3.91 6.64 L-4.07 6.52 L-4.23 6.39 L-4.38 6.26 L-4.54 6.13 L-4.69 5.99 L-4.85 5.85 L-5.00 5.70 L-5.15 5.55 L-5.30 5.39 L-5.45 5.23 L-5.59 5.07 L-5.74 4.91 L-5.88 4.74 L-6.02 4.57 L-6.16 4.39 L-6.29 4.21 L-6.43 4.03 L-6.56 3.85 L-6.69 3.66 L-6.82 3.47 L-6.95 3.28 L-7.07 3.08 L-7.19 2.89 L-7.31 2.69 L-7.43 2.49 L-7.55 2.29 L-7.66 2.09 L-7.77 1.88 L-7.88 1.68 L-7.99 1.47 L-8.09 1.26 L-8.19 1.05 L-8.29 0.84 L-8.39 0.63 L-8.48 0.42 L-8.57 0.21 L-8.66 0.00 L-8.75 -0.21 L-8.83 -0.42 L-8.91 -0.63 L-8.99 -0.84 L-9.06 -1.05 L-9.14 -1.26 L-9.21 -1.47 L-9.27 -1.68 L-9.34 -1.88 L-9.40 -2.09 L-9.46 -2.29 L-9.51 -2.49 L-9.56 -2.69 L-9.61 -2.89 L-9.66 -3.08 L-9.70 -3.28 L-9.74 -3.47 L-9.78 -3.66 L-9.82 -3.85 L-9.85 -4.03 L-9.88 -4.21 L-9.90 -4.39 L-9.93 -4.57 L-9.95 -4.74 L-9.96 -4.91 L-9.98 -5.07 L-9.99 -5.23 L-9.99 -5.39 L-10.00 -5.55 L-10.00 -5.70 L-10.00 -5.85 L-9.99 -5.99 L-9.99 -6.13 L-9.98 -6.26 L-9.96 -6.39 L-9.95 -6.52 L-9.93 -6.64 L-9.90 -6.76 L-9.88 -6.87 L-9.85 -6.98 L-9.82 -7.08 L-9.78 -7.18 L-9.74 -7.27 L-9.70 -7.36 L-9.66 -7.45 L-9.61 -7.52 L-9.56 -7.60 L-9.51 -7.67 L-9.46 -7.73 L-9.40 -7.79 L-9.34 -7.84 L-9.27 -7.88 L-9.21 -7.93 L-9.14 -7.96 L-9.06 -7.99 L-8.99 -8.02 L-8.91 -8.04 L-8.83 -8.05 L-8.75 -8.06 L-8.66 -8.06 L-8.57 -8.06 L-8.48 -8.05 L-8.39 -8.04 L-8.29 -8.02 L-8.19 -7.99 L-8.09 -7.96 L-7.99 -7.93 L-7.88 -7.88 L-7.77 -7.84 L-7.66 -7.79 L-7.55 -7.73 L-7.43 -7.67 L-7.31 -7.60 L-7.19 -7.52 L-7.07 -7.45 L-6.95 -7.36 L-6.82 -7.27 L-6.69 -7.18 L-6.56 -7.08 L-6.43 -6.98 L-6.29 -6.87 L-6.16 -6.76 L-6.02 -6.64 L-5.88 -6.52 L-5.74 -6.39 L-5.59 -6.26 L-5.45 -6.13 L-5.30 -5.99 L-5.15 -5.85 L-5.00 -5.70 L-4.85 -5.55 L-4.69 -5.39 L-4.54 -5.23 L-4.38 -5.07 L-4.23 -4.91 L-4.07 -4.74 L-3.91 -4.57 L-3.75 -4.39 L-3.58 -4.21 L-3.42 -4.03 L-3.26 -3.85 L-3.09 -3.66 L-2.92 -3.47 L-2.76 -3.28 L-2.59 -3.08 L-2.42 -2.89 L-2.25 -2.69 L-2.08 -2.49 L-1.91 -2.29 L-1.74 -2.09 L-1.56 -1.88 L-1.39 -1.68 L-1.22 -1.47 L-1.05 -1.26 L-0.87 -1.05 L-0.70 -0.84 L-0.52 -0.63 L-0.35 -0.42 L-0.17 -0.21 Z"
+-            />
++            <path class="bird" d="M512.00 444.89L176.47 214.05L265.05 337.52L138.89 321.42L251.63 442.21L146.94 452.95L431.47 589.84L455.63 809.95L512.00 742.85L568.37 809.95L592.53 589.84L877.06 452.95L772.37 442.21L885.11 321.42L758.95 337.52L847.53 214.05Z" />
++            <path class="star" d="M512.00 463.68L532.59 513.19L586.03 517.47L545.32 552.35L557.76 604.50L512.00 576.56L466.24 604.50L478.68 552.35L437.97 517.47L491.41 513.19Z" />
+         </svg>
+         <div class="name">
+             <h1 id="browser-name">Ladybird</h1>
+diff --git a/Base/res/ladybird/about-pages/welcome.css b/Base/res/ladybird/about-pages/welcome.css
+index 554f3dc8..acd7dbfc 100644
+--- a/Base/res/ladybird/about-pages/welcome.css
++++ b/Base/res/ladybird/about-pages/welcome.css
+@@ -28,8 +28,21 @@ header {
+ 
+ .logomark {
+     width: 56px;
+-    height: 46.8px;
+-    color: var(--brand);
++    height: 44.7px;
++}
++
++.logomark .bird {
++    fill: #252836;
++}
++
++@media (prefers-color-scheme: dark) {
++    .logomark .bird {
++        fill: #f2f3f7;
++    }
++}
++
++.logomark .star {
++    fill: #ff3b4e;
+ }
+ 
+ header h1 {
+diff --git a/Base/res/ladybird/about-pages/welcome.html b/Base/res/ladybird/about-pages/welcome.html
+index c6f31702..d8446ef9 100644
+--- a/Base/res/ladybird/about-pages/welcome.html
++++ b/Base/res/ladybird/about-pages/welcome.html
+@@ -19,16 +19,11 @@ SPDX-License-Identifier: BSD-2-Clause
+             <header>
+                 <svg
+                     class="logomark"
+-                    viewBox="-11 -9.2 22 18.4"
+-                    fill="none"
+-                    stroke="currentColor"
+-                    stroke-width="0.85"
+-                    stroke-linejoin="round"
++                    viewBox="138.89 214.05 746.22 595.9"
+                     aria-hidden="true"
+                 >
+-                    <path
+-                        d="M0 0 L1.39 1.68 L2.76 3.29 L4.07 4.76 L5.30 6.02 L6.43 7.02 L7.43 7.70 L8.29 8.06 L8.99 8.06 L9.51 7.70 L9.85 7.02 L9.99 6.02 L9.95 4.76 L9.70 3.29 L9.27 1.68 L8.66 0 L7.88 -1.68 L6.95 -3.29 L5.88 -4.76 L4.69 -6.02 L3.42 -7.02 L2.08 -7.70 L0.70 -8.06 L-0.70 -8.06 L-2.08 -7.70 L-3.42 -7.02 L-4.69 -6.02 L-5.88 -4.76 L-6.95 -3.29 L-7.88 -1.68 L-8.66 0 L-9.27 1.68 L-9.70 3.29 L-9.95 4.76 L-9.99 6.02 L-9.85 7.02 L-9.51 7.70 L-8.99 8.06 L-8.29 8.06 L-7.43 7.70 L-6.43 7.02 L-5.30 6.02 L-4.07 4.76 L-2.76 3.29 L-1.39 1.68 L0 0 L1.39 -1.68 L2.76 -3.29 L4.07 -4.76 L5.30 -6.02 L6.43 -7.02 L7.43 -7.70 L8.29 -8.06 L8.99 -8.06 L9.51 -7.70 L9.85 -7.02 L9.99 -6.02 L9.95 -4.76 L9.70 -3.29 L9.27 -1.68 L8.66 0 L7.88 1.68 L6.95 3.29 L5.88 4.76 L4.69 6.02 L3.42 7.02 L2.08 7.70 L0.70 8.06 L-0.70 8.06 L-2.08 7.70 L-3.42 7.02 L-4.69 6.02 L-5.88 4.76 L-6.95 3.29 L-7.88 1.68 L-8.66 0 L-9.27 -1.68 L-9.70 -3.29 L-9.95 -4.76 L-9.99 -6.02 L-9.85 -7.02 L-9.51 -7.70 L-8.99 -8.06 L-8.29 -8.06 L-7.43 -7.70 L-6.43 -7.02 L-5.30 -6.02 L-4.07 -4.76 L-2.76 -3.29 L-1.39 -1.68 Z"
+-                    />
++                    <path class="bird" d="M512.00 444.89L176.47 214.05L265.05 337.52L138.89 321.42L251.63 442.21L146.94 452.95L431.47 589.84L455.63 809.95L512.00 742.85L568.37 809.95L592.53 589.84L877.06 452.95L772.37 442.21L885.11 321.42L758.95 337.52L847.53 214.05Z" />
++                    <path class="star" d="M512.00 463.68L532.59 513.19L586.03 517.47L545.32 552.35L557.76 604.50L512.00 576.56L466.24 604.50L478.68 552.35L437.97 517.47L491.41 513.19Z" />
+                 </svg>
+                 <h1>Welcome to Ladybird</h1>
+                 <p class="muted">You can change any of this later in Settings.</p>
+diff --git a/UI/Qt/Icon.cpp b/UI/Qt/Icon.cpp
+index e8da3ec6..dc06ff61 100644
+--- a/UI/Qt/Icon.cpp
++++ b/UI/Qt/Icon.cpp
+@@ -1100,15 +1100,16 @@ QSize physical_size_for_device_pixel_ratio(QSize size, qreal device_pixel_ratio)
+     };
+ }
+ 
+-// The logomark traces x = sin 2t, y = sin 3t, scaled 179 : 145, on a box of 22 by 18.4 around its middle.
+-static constexpr auto LOGOMARK_PATH = "M0 0 L1.39 1.68 L2.76 3.29 L4.07 4.76 L5.30 6.02 L6.43 7.02 L7.43 7.70 L8.29 8.06 L8.99 8.06 L9.51 7.70 L9.85 7.02 L9.99 6.02 L9.95 4.76 L9.70 3.29 L9.27 1.68 L8.66 0 L7.88 -1.68 L6.95 -3.29 L5.88 -4.76 L4.69 -6.02 L3.42 -7.02 L2.08 -7.70 L0.70 -8.06 L-0.70 -8.06 L-2.08 -7.70 L-3.42 -7.02 L-4.69 -6.02 L-5.88 -4.76 L-6.95 -3.29 L-7.88 -1.68 L-8.66 0 L-9.27 1.68 L-9.70 3.29 L-9.95 4.76 L-9.99 6.02 L-9.85 7.02 L-9.51 7.70 L-8.99 8.06 L-8.29 8.06 L-7.43 7.70 L-6.43 7.02 L-5.30 6.02 L-4.07 4.76 L-2.76 3.29 L-1.39 1.68 L0 0 L1.39 -1.68 L2.76 -3.29 L4.07 -4.76 L5.30 -6.02 L6.43 -7.02 L7.43 -7.70 L8.29 -8.06 L8.99 -8.06 L9.51 -7.70 L9.85 -7.02 L9.99 -6.02 L9.95 -4.76 L9.70 -3.29 L9.27 -1.68 L8.66 0 L7.88 1.68 L6.95 3.29 L5.88 4.76 L4.69 6.02 L3.42 7.02 L2.08 7.70 L0.70 8.06 L-0.70 8.06 L-2.08 7.70 L-3.42 7.02 L-4.69 6.02 L-5.88 4.76 L-6.95 3.29 L-7.88 1.68 L-8.66 0 L-9.27 -1.68 L-9.70 -3.29 L-9.95 -4.76 L-9.99 -6.02 L-9.85 -7.02 L-9.51 -7.70 L-8.99 -8.06 L-8.29 -8.06 L-7.43 -7.70 L-6.43 -7.02 L-5.30 -6.02 L-4.07 -4.76 L-2.76 -3.29 L-1.39 -1.68 Z"sv;
+-static constexpr QRectF LOGOMARK_BOUNDS { -11, -9.2, 22, 18.4 };
++// Superbird's logomark, a bird with a star on its breast, as the app icon draws it on its 1024 by 1024 canvas.
++static constexpr auto LOGOMARK_BIRD_PATH = "M512.00 444.89L176.47 214.05L265.05 337.52L138.89 321.42L251.63 442.21L146.94 452.95L431.47 589.84L455.63 809.95L512.00 742.85L568.37 809.95L592.53 589.84L877.06 452.95L772.37 442.21L885.11 321.42L758.95 337.52L847.53 214.05Z"sv;
++static constexpr auto LOGOMARK_STAR_PATH = "M512.00 463.68L532.59 513.19L586.03 517.47L545.32 552.35L557.76 604.50L512.00 576.56L466.24 604.50L478.68 552.35L437.97 517.47L491.41 513.19Z"sv;
++static constexpr QRectF LOGOMARK_BOUNDS { 138.89, 214.05, 746.22, 595.9 };
+ 
+-void paint_logomark(QPainter& painter, QRectF const& rect, QColor const& color, qreal stroke_width)
++void paint_logomark(QPainter& painter, QRectF const& rect, QColor const& color)
+ {
+-    static auto const path = parse_svg_path(LOGOMARK_PATH);
++    static auto const bird = parse_svg_path(LOGOMARK_BIRD_PATH);
++    static auto const star = parse_svg_path(LOGOMARK_STAR_PATH);
+ 
+-    // NB: The stroke width is given on the logomark's own box, as the design gives it, so it scales along with the path.
+     auto scale = min(rect.width() / LOGOMARK_BOUNDS.width(), rect.height() / LOGOMARK_BOUNDS.height());
+ 
+     painter.save();
+@@ -1116,9 +1117,12 @@ void paint_logomark(QPainter& painter, QRectF const& rect, QColor const& color,
+     painter.translate(rect.center());
+     painter.scale(scale, scale);
+     painter.translate(-LOGOMARK_BOUNDS.center());
+-    painter.setBrush(Qt::NoBrush);
+-    painter.setPen(QPen(color, stroke_width, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+-    painter.drawPath(path);
++    painter.setPen(Qt::NoPen);
++    painter.setBrush(color);
++    painter.drawPath(bird);
++    // The star is Superbird red whatever the bird's color, as on the app icon.
++    painter.setBrush(QColor(0xff, 0x3b, 0x4e));
++    painter.drawPath(star);
+     painter.restore();
+ }
+ 
+diff --git a/UI/Qt/Icon.h b/UI/Qt/Icon.h
+index e465ac5d..9828e8c8 100644
+--- a/UI/Qt/Icon.h
++++ b/UI/Qt/Icon.h
+@@ -90,8 +90,7 @@ QPixmap create_chrome_icon_pixmap(ChromeIcon, QColor, qreal device_pixel_ratio);
+ 
+ QSize physical_size_for_device_pixel_ratio(QSize size, qreal device_pixel_ratio);
+ 
+-// Strokes Ladybird's logomark, a Lissajous figure, to fill the given rect. The stroke width is on the logomark's own
+-// 22 by 18.4 box.
+-void paint_logomark(QPainter&, QRectF const&, QColor const&, qreal stroke_width);
++// Paints Superbird's logomark, a bird in the given color with a red star on its breast, to fill the given rect.
++void paint_logomark(QPainter&, QRectF const&, QColor const&);
+ 
+ }
+diff --git a/UI/Qt/LadybirdButton.cpp b/UI/Qt/LadybirdButton.cpp
+index 1861850b..462e4e38 100644
+--- a/UI/Qt/LadybirdButton.cpp
++++ b/UI/Qt/LadybirdButton.cpp
+@@ -32,8 +32,7 @@ static constexpr int TILE_VERTICAL_MARGIN = 4;
+ static constexpr qreal TILE_LEADING_PADDING = 7;
+ static constexpr qreal TILE_TRAILING_PADDING = 6;
+ static constexpr qreal MARK_CHEVRON_GAP = 3;
+-static constexpr QSizeF LOGOMARK_SIZE { 20, 16.7 };
+-static constexpr qreal LOGOMARK_STROKE_WIDTH = 1.55;
++static constexpr QSizeF LOGOMARK_SIZE { 20, 16 };
+ static constexpr qreal PRIVATE_GLYPH_SIZE = 20;
+ static constexpr qreal CHEVRON_SIZE = 10;
+ // How deep the tile's fill is under the pointer, and while pressed or while the menu is open. At rest it has none, only
+@@ -188,7 +187,7 @@ void LadybirdButton::paintEvent(QPaintEvent*)
+     } else {
+         QRectF logomark_rect { QPointF(), LOGOMARK_SIZE };
+         logomark_rect.moveCenter(mark_center);
+-        paint_logomark(painter, logomark_rect, mark_color, LOGOMARK_STROKE_WIDTH);
++        paint_logomark(painter, logomark_rect, mark_color);
+     }
+     auto chevron_center = QPointF(tile_rect.right() - TILE_TRAILING_PADDING - (CHEVRON_SIZE / 2), tile_rect.center().y());
+     paint_chevron(painter, chevron_center, mark_color);
+diff --git a/UI/Qt/Theme.cpp b/UI/Qt/Theme.cpp
+index 78947e69..5e5723c5 100644
+--- a/UI/Qt/Theme.cpp
++++ b/UI/Qt/Theme.cpp
+@@ -573,7 +573,7 @@ QColor selected_row()
+ QColor logomark()
+ {
+     if (!s_color_theme.accent.has_value())
+-        return is_dark() ? rgb(0xa684ff) : rgb(0x4b22ad);
++        return is_dark() ? rgb(0xf2f3f7) : rgb(0x252836);
+     auto adjustment = is_dark() ? Adjustment::Lighten : Adjustment::Darken;
+     auto color = with_contrast(*s_color_theme.accent, chrome().strip, 4.5f, adjustment);
+     return with_contrast(color, chrome().toolbar, 4.5f, adjustment);
+diff --git a/UI/Qt/Theme.h b/UI/Qt/Theme.h
+index a67d63b2..510968a2 100644
+--- a/UI/Qt/Theme.h
++++ b/UI/Qt/Theme.h
+@@ -126,7 +126,7 @@ QColor primary();
+ // The fill of the selected row of a menu or a list navigated with the keyboard.
+ QColor selected_row();
+ 
+-// The color of Ladybird's logomark on the chrome: Ladybird purple in the neutral theme, and a tinted theme's base color,
++// The color of the logomark's bird on the chrome: Superbird's ink in the neutral theme, and a tinted theme's base color,
+ // so the window shows a single hue.
+ QColor logomark();
+ 
