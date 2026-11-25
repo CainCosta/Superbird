@@ -155,6 +155,7 @@ void SplitViewModule::show_split()
     m_host->rebuild(*m_layout, [this](auto pane) { return tab_for(pane); });
     tabs.set_page_host(m_host);
     m_host->set_focused(m_layout->focused());
+    update_pane_visibility(PanesShown::Yes);
     m_changing = false;
 }
 
@@ -163,6 +164,7 @@ void SplitViewModule::hide_split()
     if (!m_host)
         return;
     m_changing = true;
+    update_pane_visibility(PanesShown::No);
     auto& tabs = m_window.tab_widget();
     auto host = m_host;
     m_host = nullptr;
@@ -267,10 +269,29 @@ void SplitViewModule::focus_pane(Split::PaneId pane)
         m_window.activate_tab(m_window.tab_index(tab));
         m_changing = false;
     }
-    if (m_host)
+    if (m_host) {
         m_host->set_focused(pane);
+        update_pane_visibility(PanesShown::Yes);
+    }
     if (tab->is_loaded())
         tab->view().setFocus(Qt::OtherFocusReason);
+}
+
+void SplitViewModule::update_pane_visibility(PanesShown shown)
+{
+    // NB: Selecting a tab tells the page it left that it's hidden, which stops it painting and lets it be discarded. Every
+    //     page of a split on screen is seen, so the ones besides the current tab are told they're visible again.
+    if (!m_layout)
+        return;
+    auto* current = m_window.current_tab();
+    for (auto pane : m_layout->panes()) {
+        auto* tab = tab_for(pane);
+        if (!tab || tab == current || !tab->is_loaded())
+            continue;
+        auto& view = tab->view();
+        view.set_system_visibility_state(shown == PanesShown::Yes ? Web::HTML::VisibilityState::Visible : Web::HTML::VisibilityState::Hidden);
+        view.set_current_tab_of_window(shown == PanesShown::Yes);
+    }
 }
 
 void SplitViewModule::on_active_tab_changed(Ladybird::Tab* tab)
@@ -283,8 +304,10 @@ void SplitViewModule::on_active_tab_changed(Ladybird::Tab* tab)
         if (!m_host)
             show_split();
         m_layout->focus(*pane);
-        if (m_host)
+        if (m_host) {
             m_host->set_focused(*pane);
+            update_pane_visibility(PanesShown::Yes);
+        }
         return;
     }
     // Another tab: the split steps aside, and comes back when one of its tabs is picked again.

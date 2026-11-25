@@ -78,6 +78,11 @@ private:
     void unsplit();
     void relayout();
     void focus_pane(Split::PaneId);
+    enum class PanesShown : u8 {
+        No,
+        Yes,
+    };
+    void update_pane_visibility(PanesShown);
 
     Ladybird::BrowserWindow& m_window;
     std::optional<Split::SplitLayout> m_layout;
