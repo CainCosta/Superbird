@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Superbird <superbird@local>
+Date: Tue, 24 Nov 2026 22:34:20 -0600
+Subject: [PATCH] Hub: Let the UI register its Superbird modules for
+ about:settings
+
+
+diff --git a/Services/Hub/ConnectionFromUI.cpp b/Services/Hub/ConnectionFromUI.cpp
+index 4020868b..fd9c7b24 100644
+--- a/Services/Hub/ConnectionFromUI.cpp
++++ b/Services/Hub/ConnectionFromUI.cpp
+@@ -954,6 +954,17 @@ void ConnectionFromUI::update_settings(u64 change_id, ByteString changes_json)
+     Application::settings().replace_with_json(settings, WebView::Settings::PersistChange::Yes);
+ }
+ 
++// The UI compiles Superbird's modules in, and tells this process, which serves about:settings, which ones it has.
++void ConnectionFromUI::register_superbird_module(String id, String name, String description, bool enabled_by_default)
++{
++    Application::settings().register_superbird_module({
++        .id = move(id),
++        .name = move(name),
++        .description = move(description),
++        .enabled_by_default = enabled_by_default,
++    });
++}
++
+ void ConnectionFromUI::destroy_view(u64 view_id)
+ {
+     Application::the().destroy_view(view_id);
+diff --git a/Services/Hub/ConnectionFromUI.h b/Services/Hub/ConnectionFromUI.h
+index 06911ac1..31d2f159 100644
+--- a/Services/Hub/ConnectionFromUI.h
++++ b/Services/Hub/ConnectionFromUI.h
+@@ -118,6 +118,7 @@ private:
+     virtual void view_request_close_preflight(u64 view_id, u64 request_id) override;
+     virtual void view_request_page_dumps(u64 view_id, u64 request_id) override;
+     virtual void view_request_reader_document(u64 view_id, u64 request_id) override;
++    virtual void register_superbird_module(String id, String name, String description, bool enabled_by_default) override;
+     virtual void request_platform_features_description(u64 request_id) override;
+     virtual void view_prepare_for_immediate_close(u64 view_id) override;
+     virtual void view_prepare_for_close_without_prompting(u64 view_id, u64 close_id) override;
+diff --git a/Services/Hub/HubServer.ipc b/Services/Hub/HubServer.ipc
+index 45706479..25a394a1 100644
+--- a/Services/Hub/HubServer.ipc
++++ b/Services/Hub/HubServer.ipc
+@@ -243,6 +243,7 @@ endpoint HubServer
+     answer_clipboard_item(u64 request_id, Web::Clipboard::SystemClipboardItem item) =|
+     answer_download_path(u64 request_id, Optional<ByteString> path) =|
+     update_settings(u64 change_id, ByteString changes_json) =|
++    register_superbird_module(String id, String name, String description, bool enabled_by_default) =|
+     view_answer(u64 view_id, u64 answer_id, bool answer) =|
+     view_answer_permission_request(u64 view_id, u64 answer_id, Web::Permissions::PromptOutcome outcome) =|
+     destroy_view(u64 view_id) =|

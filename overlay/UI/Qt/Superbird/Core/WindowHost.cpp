@@ -6,6 +6,7 @@
 
 #include <UI/Qt/Application.h>
 #include <UI/Qt/BrowserWindow.h>
+#include <UI/Qt/HubConnection.h>
 #include <UI/Qt/TabBar.h>
 #include <UI/Qt/Superbird/Core/WindowHost.h>
 
@@ -46,12 +47,18 @@ namespace Superbird {
 
     register_actions(registry);
 
+    auto id = MUST(String::from_utf8(info.id));
+    auto name = MUST(String::from_utf8(info.name));
+    auto description = MUST(String::from_utf8(info.description));
     Ladybird::Application::settings().register_superbird_module({
-        .id = MUST(String::from_utf8(info.id)),
-        .name = MUST(String::from_utf8(info.name)),
-        .description = MUST(String::from_utf8(info.description)),
+        .id = id,
+        .name = name,
+        .description = description,
         .enabled_by_default = info.enabled_by_default,
     });
+    // NB: about:settings is served by the Hub, which keeps its own settings, so it hears of the module too.
+    if (auto* hub = Ladybird::HubConnection::the_if_connected())
+        hub->async_register_superbird_module(move(id), move(name), move(description), info.enabled_by_default);
 }
 
 void WindowHost::register_compiled_modules()
