@@ -96,6 +96,8 @@ private:
 
     HitResult hit_test(QPoint const& viewport_pos) const;
     void update_scrollbars();
+    void update_size_hint();
+    int filter_bar_height() const;
     void update_drop_target(QPoint const& viewport_pos);
     void clear_drag_state();
     void update_loading_timer();
@@ -111,6 +113,7 @@ private:
     QLineEdit* m_filter_field { nullptr };
     Vector<VisibleTreeRow> m_rows;
     bool m_collapsed_rail { false };
+    int m_size_hint_height { -1 };
 
     HitResult m_hover {};
     Optional<TreeNodeId> m_pressed_node_id;

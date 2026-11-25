@@ -86,7 +86,9 @@ TreeTabView::TreeTabView(TreeTabController& controller, QWidget* parent)
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setFocusPolicy(Qt::ClickFocus);
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    // NB: The tree is only as tall as its rows, so the new tab button can sit right under the last one. With more rows
+    //     than room, it shrinks to what's left of the sidebar and scrolls.
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
     viewport()->setMouseTracking(true);
     viewport()->setAutoFillBackground(false);
@@ -128,6 +130,7 @@ TreeTabView::~TreeTabView() = default;
 void TreeTabView::rebuild_rows()
 {
     m_rows = m_controller.visible_rows();
+    update_size_hint();
     update_scrollbars();
     update_loading_timer();
     viewport()->update();
@@ -217,6 +220,7 @@ void TreeTabView::set_collapsed_rail(bool collapsed_rail)
         return;
     m_collapsed_rail = collapsed_rail;
     update_filter_bar();
+    update_size_hint();
     update_scrollbars();
     viewport()->update();
 }
@@ -242,16 +246,31 @@ void TreeTabView::ensure_tab_visible(Tab const* tab)
     }
 }
 
+int TreeTabView::filter_bar_height() const
+{
+    return m_collapsed_rail ? 0 : TREE_FILTER_BAR_HEIGHT;
+}
+
 QSize TreeTabView::sizeHint() const
 {
     auto pinned = compute_pinned_layout();
-    auto height = TREE_TOP_PADDING + pinned.total_height + static_cast<int>(m_rows.size()) * TREE_ROW_HEIGHT + 4;
+    auto height = filter_bar_height() + TREE_TOP_PADDING + pinned.total_height + static_cast<int>(m_rows.size()) * TREE_ROW_HEIGHT + 4;
     return { 220, height };
 }
 
 QSize TreeTabView::minimumSizeHint() const
 {
-    return { 36, TREE_ROW_HEIGHT };
+    return { 36, filter_bar_height() + TREE_ROW_HEIGHT };
+}
+
+void TreeTabView::update_size_hint()
+{
+    // NB: Tabs coming and going, branches folding and the pinned tiles rewrapping all change how tall the tree wants to be.
+    auto height = sizeHint().height();
+    if (height == m_size_hint_height)
+        return;
+    m_size_hint_height = height;
+    updateGeometry();
 }
 
 TreeTabView::PinnedLayout TreeTabView::compute_pinned_layout() const
@@ -387,6 +406,7 @@ void TreeTabView::resizeEvent(QResizeEvent* event)
 {
     QAbstractScrollArea::resizeEvent(event);
     update_filter_bar();
+    update_size_hint();
     update_scrollbars();
 }
 
