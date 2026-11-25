@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Superbird <superbird@local>
+Date: Tue, 24 Nov 2026 18:29:56 -0600
+Subject: [PATCH] UI/Qt: Let Superbird modules reserve window shortcuts over
+ the page
+
+
+diff --git a/UI/Qt/WebContentView.cpp b/UI/Qt/WebContentView.cpp
+index a9989b17..4a510d19 100644
+--- a/UI/Qt/WebContentView.cpp
++++ b/UI/Qt/WebContentView.cpp
+@@ -51,6 +51,7 @@
+ #include <UI/Qt/PlatformColors.h>
+ #include <UI/Qt/SelectDropdown.h>
+ #include <UI/Qt/StringUtils.h>
++#include <UI/Qt/Superbird/Core/WindowHost.h>
+ #include <UI/Qt/SystemAppearance.h>
+ #include <UI/Qt/Theme.h>
+ #include <UI/Qt/WebContentView.h>
+@@ -773,6 +774,10 @@ static Web::UIEvents::KeyCode get_keycode_from_qt_key_event(QKeyEvent const& eve
+ 
+ static bool is_browser_reserved_shortcut(QKeyEvent const& event)
+ {
++    // Shortcuts that enabled Superbird modules claim, such as the Command Palette's.
++    if (Superbird::WindowHost::is_reserved_shortcut(event))
++        return true;
++
+     // Browser chrome shortcuts that manage tabs, windows, focus, or chrome visibility should not wait for
+     // WebContent to decide whether the page wants to suppress them.
+     if (event.matches(QKeySequence::StandardKey::Close)

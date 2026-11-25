@@ -12,6 +12,13 @@
 #    include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabController.h>
 #    include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabsModule.h>
 #endif
+#if defined(SUPERBIRD_MODULE_COMMAND_PALETTE)
+#    include <UI/Qt/Superbird/Modules/CommandPalette/CommandPaletteModule.h>
+#endif
+
+#include <QHash>
+#include <QKeyEvent>
+#include <QKeySequence>
 
 namespace Superbird {
 
@@ -38,6 +45,44 @@ void WindowHost::register_compiled_modules()
 #if defined(SUPERBIRD_MODULE_TREE_TABS)
     register_compiled_module(TreeTabsModule::module_info(), TreeTabsModule::register_actions);
 #endif
+#if defined(SUPERBIRD_MODULE_COMMAND_PALETTE)
+    register_compiled_module(CommandPaletteModule::module_info(), CommandPaletteModule::register_actions);
+#endif
+}
+
+static QHash<QKeyCombination, int>& reserved_shortcuts()
+{
+    static QHash<QKeyCombination, int> shortcuts;
+    return shortcuts;
+}
+
+void WindowHost::reserve_shortcut(QKeySequence const& sequence)
+{
+    // Only single-chord sequences can be matched against one key event.
+    if (sequence.count() != 1)
+        return;
+    ++reserved_shortcuts()[sequence[0]];
+}
+
+void WindowHost::release_shortcut(QKeySequence const& sequence)
+{
+    if (sequence.count() != 1)
+        return;
+    auto& shortcuts = reserved_shortcuts();
+    auto it = shortcuts.find(sequence[0]);
+    if (it == shortcuts.end())
+        return;
+    if (--it.value() <= 0)
+        shortcuts.erase(it);
+}
+
+bool WindowHost::is_reserved_shortcut(QKeyEvent const& event)
+{
+    auto const& shortcuts = reserved_shortcuts();
+    if (shortcuts.isEmpty())
+        return false;
+    auto modifiers = event.modifiers() & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+    return shortcuts.contains(QKeyCombination(modifiers, static_cast<Qt::Key>(event.key())));
 }
 
 void WindowHost::sync_registry_from_settings()
@@ -56,6 +101,9 @@ WindowHost::WindowHost(Ladybird::BrowserWindow& window)
     auto tree_tabs = make<TreeTabsModule>(m_window);
     m_tree_tabs_module = tree_tabs.ptr();
     m_modules.append(move(tree_tabs));
+#endif
+#if defined(SUPERBIRD_MODULE_COMMAND_PALETTE)
+    m_modules.append(make<CommandPaletteModule>(m_window));
 #endif
 
     ModuleRegistry::the().add_observer(*this);
@@ -178,6 +226,16 @@ void WindowHost::update_window_tab_layout_menu()
 {
     for (auto& module : m_modules)
         module->update_window_tab_layout_menu();
+}
+
+Vector<String> WindowHost::tab_context(Ladybird::Tab& tab)
+{
+    Vector<String> labels;
+    for (auto& module : m_modules) {
+        if (ModuleRegistry::the().is_enabled(module->id()))
+            module->append_tab_context(tab, labels);
+    }
+    return labels;
 }
 
 }

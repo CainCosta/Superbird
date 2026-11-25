@@ -66,6 +66,8 @@ public:
     virtual void attach_window_tab_layout_menu(QMenu& tab_layout_menu) override;
     virtual void update_window_tab_layout_menu() override;
 
+    virtual void append_tab_context(Ladybird::Tab& tab, Vector<String>& labels) override;
+
 private:
     struct TabMenuActions {
         QPointer<QAction> new_child_tab;

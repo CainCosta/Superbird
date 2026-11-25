@@ -71,6 +71,8 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 
 ### M1 — Command Palette (`Cmd/Ctrl+K` or `F2`)
 *Inspired by Vivaldi Quick Commands, Arc `Cmd+T`, and SigmaOS.*
+
+> **Status: ✅ Shipped (M1).** `Modules/CommandPalette/` fuzzy-ranks open tabs (with Tree Tabs branch context), bookmarks, history, and every bus action (17 browser commands + module actions), evaluates `=` math, and navigates/searches typed input; one 5-line patch lets modules reserve window shortcuts over a focused page (`WindowHost::reserve_shortcut`). Design: `docs/design/M1-command-palette.md`.
 - **What it does:** A fast, centered floating Qt modal over the active window with live fuzzy matching across:
   - **Open tabs** (shows workspace/branch context; jump to tab or close it)
   - **Bookmarks & recent history** (via existing `BookmarkStore` and `HistoryStore`)
@@ -137,7 +139,7 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 | Milestone | Scope | Upstream Patch Footprint | Key Verification |
 | :--- | :--- | :--- | :--- |
 | **M0** ✅ | Tier 0: Rename to Superbird + coexistence (`Superbird` profile/bundle/lock) + `SuperbirdModule` registry + `about:settings -> Superbird` + migrate Tree Tabs | Small (Profile, App identity, 1 `WindowHost` seam, 1 Settings tab) | Both browsers run side-by-side; Tree Tabs toggleable on/off cleanly; green macOS + Linux CI |
-| **M1** | Command Palette (`Cmd/Ctrl+K` / `F2`) + action bus | Tiny (1 shortcut hook) | Fuzzy/math unit tests + opens & executes actions on macOS + Linux |
+| **M1** ✅ | Command Palette (`Cmd/Ctrl+K` / `F2`) + action bus | Tiny (1 shortcut hook) | Fuzzy/math unit tests + opens & executes actions on macOS + Linux |
 | **M2** | Reader View (Hub IPC extraction + C++23 `ArticleExtractor` + reader overlay & typography controls) | Small (1 read-only Hub/RemoteView IPC message + address bar icon hook) | `ArticleExtractor` sanitization & scoring unit tests + green macOS + Linux CI |
 | **M3** | Workspaces (Spaces) + `Workspaces.db` + sidebar/toolbar switcher | Small (`TabWidget` / `TreeTabView` filter seam) | Workspace model unit tests + works with both Tree Tabs and regular tabs |
 | **M4** | Split View (2-pane / grid tab tiling) | Small (`TabWidget` page host seam) | Split layout unit tests + focus/close/resize stability |

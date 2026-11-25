@@ -13,6 +13,8 @@
 #include <UI/Qt/Superbird/Core/Module.h>
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
 
+class QKeyEvent;
+class QKeySequence;
 class QMenu;
 
 namespace Ladybird {
@@ -36,6 +38,13 @@ public:
 
     static void register_compiled_modules();
     static void sync_registry_from_settings();
+
+    // App-wide keyboard shortcuts that modules claim while they are enabled. A page with focus otherwise gets the
+    // first say over every key (WebContentView accepts ShortcutOverride), so a module's window shortcut would never
+    // fire. Reservations are counted, so each window's module instance reserves and releases its own.
+    static void reserve_shortcut(QKeySequence const&);
+    static void release_shortcut(QKeySequence const&);
+    static bool is_reserved_shortcut(QKeyEvent const&);
 
     explicit WindowHost(Ladybird::BrowserWindow& window);
     virtual ~WindowHost() override;
@@ -61,6 +70,9 @@ public:
 
     void attach_window_tab_layout_menu(QMenu& tab_layout_menu);
     void update_window_tab_layout_menu();
+
+    // The labels every enabled module gives this tab's context, in module order.
+    Vector<String> tab_context(Ladybird::Tab& tab);
 
 private:
     virtual void module_enabled_changed(StringView module_id, bool enabled) override;

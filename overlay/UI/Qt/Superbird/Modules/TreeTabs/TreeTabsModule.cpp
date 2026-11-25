@@ -5,6 +5,7 @@
  */
 
 #include <UI/Qt/Application.h>
+#include <UI/Qt/StringUtils.h>
 #include <UI/Qt/BrowserWindow.h>
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
 #include <UI/Qt/Superbird/Core/WindowHost.h>
@@ -238,6 +239,26 @@ void TreeTabsModule::update_window_tab_layout_menu()
         m_window_tree_tabs_action->setVisible(module_enabled);
         m_window_tree_tabs_action->setChecked(m_controller->is_enabled());
     }
+}
+
+void TreeTabsModule::append_tab_context(Ladybird::Tab& tab, Vector<String>& labels)
+{
+    if (!m_controller->is_enabled())
+        return;
+    auto const& model = m_controller->model();
+    auto node_id = model.node_id_for_tab(&tab);
+    if (!node_id.has_value())
+        return;
+    auto const* node = model.node(*node_id);
+    if (!node || !node->parent_id.has_value())
+        return;
+    auto const* parent = model.node(*node->parent_id);
+    if (!parent || !parent->tab)
+        return;
+    auto parent_title = parent->tab->title();
+    if (parent_title.isEmpty())
+        return;
+    labels.append(ak_string_from_qstring(QString("in %1").arg(parent_title)));
 }
 
 namespace {

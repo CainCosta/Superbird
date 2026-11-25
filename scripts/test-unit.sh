@@ -88,3 +88,15 @@ fi
     "$TMP_DIR/ak_stubs.cpp" \
     -o "$TMP_DIR/test_tree_tabs_actions"
 "$TMP_DIR/test_tree_tabs_actions"
+
+CP_DIR="$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/CommandPalette"
+"$CXX" "${COMMON_FLAGS[@]}" \
+    "$ROOT_DIR/tests/TestCommandPalette.cpp" \
+    "$CP_DIR/FuzzyMatcher.cpp" \
+    "$CP_DIR/MathExpression.cpp" \
+    "$CP_DIR/PaletteRanking.cpp" \
+    "$CP_DIR/CommandPaletteActions.cpp" \
+    "$ROOT_DIR/overlay/UI/Qt/Superbird/Core/ModuleRegistry.cpp" \
+    "$TMP_DIR/ak_stubs.cpp" \
+    -o "$TMP_DIR/test_command_palette"
+"$TMP_DIR/test_command_palette"

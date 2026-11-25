@@ -25,3 +25,21 @@ if (SUPERBIRD_MODULE_TREE_TABS)
         Superbird/Modules/TreeTabs/TreeTabsModule.h
     )
 endif()
+
+if (SUPERBIRD_MODULE_COMMAND_PALETTE)
+    target_compile_definitions(ladybird_impl PUBLIC SUPERBIRD_MODULE_COMMAND_PALETTE=1)
+    target_sources(ladybird_impl PRIVATE
+        Superbird/Modules/CommandPalette/CommandPaletteActions.cpp
+        Superbird/Modules/CommandPalette/CommandPaletteActions.h
+        Superbird/Modules/CommandPalette/CommandPaletteModule.cpp
+        Superbird/Modules/CommandPalette/CommandPaletteModule.h
+        Superbird/Modules/CommandPalette/CommandPalettePopover.cpp
+        Superbird/Modules/CommandPalette/CommandPalettePopover.h
+        Superbird/Modules/CommandPalette/FuzzyMatcher.cpp
+        Superbird/Modules/CommandPalette/FuzzyMatcher.h
+        Superbird/Modules/CommandPalette/MathExpression.cpp
+        Superbird/Modules/CommandPalette/MathExpression.h
+        Superbird/Modules/CommandPalette/PaletteRanking.cpp
+        Superbird/Modules/CommandPalette/PaletteRanking.h
+    )
+endif()

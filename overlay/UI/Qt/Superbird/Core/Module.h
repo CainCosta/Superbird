@@ -6,8 +6,10 @@
 
 #pragma once
 
+#include <AK/Forward.h>
 #include <AK/Noncopyable.h>
 #include <AK/StringView.h>
+#include <AK/Vector.h>
 
 class QMenu;
 
@@ -59,6 +61,10 @@ public:
 
     virtual void attach_window_tab_layout_menu(QMenu&) { }
     virtual void update_window_tab_layout_menu() { }
+
+    // Appends short labels that place a tab in this module's structure (its tree branch, its workspace, ...), for
+    // surfaces such as the Command Palette that list tabs outside their usual context.
+    virtual void append_tab_context(Ladybird::Tab&, Vector<String>&) { }
 };
 
 }
