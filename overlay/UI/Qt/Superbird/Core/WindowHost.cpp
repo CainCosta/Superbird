@@ -6,6 +6,7 @@
 
 #include <UI/Qt/Application.h>
 #include <UI/Qt/BrowserWindow.h>
+#include <UI/Qt/TabBar.h>
 #include <UI/Qt/Superbird/Core/WindowHost.h>
 
 #if defined(SUPERBIRD_MODULE_TREE_TABS)
@@ -17,6 +18,9 @@
 #endif
 #if defined(SUPERBIRD_MODULE_READER_VIEW)
 #    include <UI/Qt/Superbird/Modules/ReaderView/ReaderViewModule.h>
+#endif
+#if defined(SUPERBIRD_MODULE_WORKSPACES)
+#    include <UI/Qt/Superbird/Modules/Workspaces/WorkspacesModule.h>
 #endif
 
 #include <QHash>
@@ -54,6 +58,28 @@ void WindowHost::register_compiled_modules()
 #if defined(SUPERBIRD_MODULE_READER_VIEW)
     register_compiled_module(ReaderViewModule::module_info(), ReaderViewModule::register_actions);
 #endif
+#if defined(SUPERBIRD_MODULE_WORKSPACES)
+    register_compiled_module(WorkspacesModule::module_info(), WorkspacesModule::register_actions);
+#endif
+}
+
+static Optional<ByteString>& profile_data_directory()
+{
+    static Optional<ByteString> directory;
+    return directory;
+}
+
+void WindowHost::set_profile_data_directory(ByteString data_directory, bool persists)
+{
+    if (persists)
+        profile_data_directory() = move(data_directory);
+    else
+        profile_data_directory().clear();
+}
+
+Optional<ByteString> const& WindowHost::persistent_data_directory()
+{
+    return profile_data_directory();
 }
 
 static QHash<QKeyCombination, int>& reserved_shortcuts()
@@ -113,6 +139,9 @@ WindowHost::WindowHost(Ladybird::BrowserWindow& window)
 #endif
 #if defined(SUPERBIRD_MODULE_READER_VIEW)
     m_modules.append(make<ReaderViewModule>(m_window));
+#endif
+#if defined(SUPERBIRD_MODULE_WORKSPACES)
+    m_modules.append(make<WorkspacesModule>(m_window));
 #endif
 
     ModuleRegistry::the().add_observer(*this);
@@ -244,6 +273,36 @@ void WindowHost::update_window_tab_layout_menu()
 {
     for (auto& module : m_modules)
         module->update_window_tab_layout_menu();
+}
+
+bool WindowHost::is_tab_hidden(Ladybird::Tab& tab) const
+{
+    for (auto const& module : m_modules) {
+        if (ModuleRegistry::the().is_enabled(module->id()) && module->is_tab_hidden(tab))
+            return true;
+    }
+    return false;
+}
+
+void WindowHost::update_tab_visibility(HideTabs hide_tabs)
+{
+    auto& tab_widget = m_window.tab_widget();
+    auto* tab_bar = tab_widget.tab_bar();
+    bool changed = false;
+    for (int index = 0; index < m_window.tab_count(); ++index) {
+        auto* tab = m_window.tab_at(index);
+        auto visible = !tab || !is_tab_hidden(*tab);
+        if (!visible && hide_tabs == HideTabs::No)
+            continue;
+        if (tab_bar->isTabVisible(index) != visible) {
+            tab_bar->setTabVisible(index, visible);
+            changed = true;
+        }
+    }
+    if (changed)
+        tab_widget.update_tab_layout();
+    for (auto& module : m_modules)
+        module->on_tab_visibility_changed();
 }
 
 Vector<String> WindowHost::tab_context(Ladybird::Tab& tab)

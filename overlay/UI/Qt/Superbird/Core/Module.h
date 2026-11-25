@@ -65,6 +65,11 @@ public:
     // Appends short labels that place a tab in this module's structure (its tree branch, its workspace, ...), for
     // surfaces such as the Command Palette that list tabs outside their usual context.
     virtual void append_tab_context(Ladybird::Tab&, Vector<String>&) { }
+
+    // Whether this module keeps a tab out of the tab bar and sidebar (e.g. it's in another workspace). A tab shows
+    // only if no enabled module hides it. WindowHost::update_tab_visibility() applies the answers.
+    virtual bool is_tab_hidden(Ladybird::Tab&) const { return false; }
+    virtual void on_tab_visibility_changed() { }
 };
 
 }

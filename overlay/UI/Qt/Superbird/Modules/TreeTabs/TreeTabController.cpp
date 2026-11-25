@@ -268,10 +268,14 @@ bool TreeTabController::tab_has_audio(Tab const& tab)
 
 Vector<VisibleTreeRow> TreeTabController::visible_rows() const
 {
-    return m_model.visible_rows(
+    auto rows = m_model.visible_rows(
         m_window.current_tab(),
         [](Tab const& tab) { return tab_has_audio(tab); },
         [](Tab const& tab) { return tab.needs_attention(); });
+    // Tabs another module keeps out of view (another workspace's) leave the tree too.
+    if (m_is_tab_hidden)
+        rows.remove_all_matching([&](VisibleTreeRow const& row) { return row.tab && m_is_tab_hidden(*row.tab); });
+    return rows;
 }
 
 void TreeTabController::activate_tab(Tab& tab)

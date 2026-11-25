@@ -63,3 +63,19 @@ if (SUPERBIRD_MODULE_READER_VIEW)
         Superbird/Modules/ReaderView/UrlResolver.h
     )
 endif()
+
+if (SUPERBIRD_MODULE_WORKSPACES)
+    target_compile_definitions(ladybird_impl PUBLIC SUPERBIRD_MODULE_WORKSPACES=1)
+    target_sources(ladybird_impl PRIVATE
+        Superbird/Modules/Workspaces/WorkspaceModel.cpp
+        Superbird/Modules/Workspaces/WorkspaceModel.h
+        Superbird/Modules/Workspaces/WorkspaceStore.cpp
+        Superbird/Modules/Workspaces/WorkspaceStore.h
+        Superbird/Modules/Workspaces/WorkspaceSwitcher.cpp
+        Superbird/Modules/Workspaces/WorkspaceSwitcher.h
+        Superbird/Modules/Workspaces/WorkspacesActions.cpp
+        Superbird/Modules/Workspaces/WorkspacesActions.h
+        Superbird/Modules/Workspaces/WorkspacesModule.cpp
+        Superbird/Modules/Workspaces/WorkspacesModule.h
+    )
+endif()

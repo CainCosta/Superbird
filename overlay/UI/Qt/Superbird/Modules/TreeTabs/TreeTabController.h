@@ -95,6 +95,9 @@ public:
 
     void refresh_view();
 
+    // Tabs this says are hidden (another workspace's, say) don't appear in the tree.
+    void set_tab_hidden_predicate(Function<bool(Tab&)> predicate) { m_is_tab_hidden = move(predicate); }
+
 private:
     void sync_flat_tab_order();
     void reconcile_model_with_window();
@@ -108,6 +111,7 @@ private:
     TreeTabModel m_model;
     QPointer<TreeTabView> m_view;
     QPointer<Tab> m_pending_opener;
+    Function<bool(Tab&)> m_is_tab_hidden;
     QTimer* m_persist_timer { nullptr };
 
     bool m_syncing_flat_order { false };

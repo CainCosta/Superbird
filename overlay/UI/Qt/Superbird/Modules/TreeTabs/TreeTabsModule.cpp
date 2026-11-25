@@ -17,6 +17,7 @@
 
 #include <QAction>
 #include <QMenu>
+#include <QTimer>
 
 namespace Superbird {
 
@@ -41,6 +42,13 @@ TreeTabsModule::TreeTabsModule(Ladybird::BrowserWindow& window)
             tree_view->set_collapsed_rail(collapsed_rail);
     };
     sync_sidebar_visibility();
+
+    // NB: The window's WindowHost is still being made while its modules are, so it's asked only once it exists.
+    QTimer::singleShot(0, m_controller.ptr(), [this] {
+        m_controller->set_tab_hidden_predicate([this](Ladybird::Tab& tab) { return m_window.superbird().is_tab_hidden(tab); });
+        if (m_controller->is_enabled())
+            m_controller->refresh_view();
+    });
 }
 
 TreeTabsModule::~TreeTabsModule() = default;
@@ -239,6 +247,12 @@ void TreeTabsModule::update_window_tab_layout_menu()
         m_window_tree_tabs_action->setVisible(module_enabled);
         m_window_tree_tabs_action->setChecked(m_controller->is_enabled());
     }
+}
+
+void TreeTabsModule::on_tab_visibility_changed()
+{
+    if (m_controller->is_enabled())
+        m_controller->refresh_view();
 }
 
 void TreeTabsModule::append_tab_context(Ladybird::Tab& tab, Vector<String>& labels)

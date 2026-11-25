@@ -101,6 +101,8 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 
 ### M3 — Workspaces (Spaces)
 *Inspired by Arc Spaces, Zen Workspaces, Vivaldi Workspaces, and Sidebery Panels.*
+
+> **Status: ✅ Shipped (M3).** `Modules/Workspaces/` adds a pure `WorkspaceModel` (assignment, visibility, last-active fallback, snapshot↔rows), sidecar `Workspaces.db`, a sidebar switcher (address-field badge with horizontal tabs), "Move to Workspace" tab menu, named palette actions, and `Ctrl+Alt+1–9` (`Ctrl+1–9` on macOS). Works with Tree Tabs (hidden-tab predicate) and stock tabs. Patch 0010 (86 lines, user-approved over the "small" budget because the vertical tab bar lays out by index): hidden tabs take no room/hit area, next/previous tab skip them, a sidebar footer slot, and the profile data directory for sidecar DBs. Pinned tabs are global. Design: `docs/design/M3-workspaces.md`.
 - **What it does:** Partition a single window's tabs into named contexts (*Default*, *Work*, *Research*, *Personal*, etc.), each with an icon and optional accent tint.
   - Switching workspaces hides tabs from other workspaces and shows only the active workspace's tabs (pinned tabs can be global or per-workspace).
   - Compact workspace switcher bar at the bottom of the vertical sidebar (or toolbar pill in horizontal tab mode), plus keyboard switching and Command Palette integration.
@@ -143,7 +145,7 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 | **M0** ✅ | Tier 0: Rename to Superbird + coexistence (`Superbird` profile/bundle/lock) + `SuperbirdModule` registry + `about:settings -> Superbird` + migrate Tree Tabs | Small (Profile, App identity, 1 `WindowHost` seam, 1 Settings tab) | Both browsers run side-by-side; Tree Tabs toggleable on/off cleanly; green macOS + Linux CI |
 | **M1** ✅ | Command Palette (`Cmd/Ctrl+K` / `F2`) + action bus | Tiny (1 shortcut hook) | Fuzzy/math unit tests + opens & executes actions on macOS + Linux |
 | **M2** ✅ | Reader View (Hub IPC extraction + C++23 `ArticleExtractor` + reader overlay & typography controls) | Small (1 read-only Hub/RemoteView IPC message + address bar icon hook) | `ArticleExtractor` sanitization & scoring unit tests + green macOS + Linux CI |
-| **M3** | Workspaces (Spaces) + `Workspaces.db` + sidebar/toolbar switcher | Small (`TabWidget` / `TreeTabView` filter seam) | Workspace model unit tests + works with both Tree Tabs and regular tabs |
+| **M3** ✅ | Workspaces (Spaces) + `Workspaces.db` + sidebar/toolbar switcher | Small (`TabWidget` / `TreeTabView` filter seam) | Workspace model unit tests + works with both Tree Tabs and regular tabs |
 | **M4** | Split View (2-pane / grid tab tiling) | Small (`TabWidget` page host seam) | Split layout unit tests + focus/close/resize stability |
 | **M5** | Glance (Quick Peek floating sheet + promote to tab) | Tiny (link modifier / context menu hook) | Glance lifecycle tests + promotes cleanly into Tree Tabs |
 | **M6** | Tree-Style Tabs Wave 1 polish (sidebar filter box + branch color tags) | None (overlay-only!) | TreeTabModel unit tests |

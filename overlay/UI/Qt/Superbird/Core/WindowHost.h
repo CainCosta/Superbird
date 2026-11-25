@@ -6,7 +6,9 @@
 
 #pragma once
 
+#include <AK/ByteString.h>
 #include <AK/NonnullOwnPtr.h>
+#include <AK/Optional.h>
 #include <AK/StringView.h>
 #include <AK/Vector.h>
 #include <AK/kmalloc.h>
@@ -42,6 +44,11 @@ public:
     // App-wide keyboard shortcuts that modules claim while they are enabled. A page with focus otherwise gets the
     // first say over every key (WebContentView accepts ShortcutOverride), so a module's window shortcut would never
     // fire. Reservations are counted, so each window's module instance reserves and releases its own.
+    // Where the profile keeps its data, for modules' sidecar databases, or nothing if this run keeps no data (its
+    // sessions aren't persisted). Set once by the application before any window exists.
+    static void set_profile_data_directory(ByteString data_directory, bool persists);
+    static Optional<ByteString> const& persistent_data_directory();
+
     static void reserve_shortcut(QKeySequence const&);
     static void release_shortcut(QKeySequence const&);
     static bool is_reserved_shortcut(QKeyEvent const&);
@@ -76,6 +83,14 @@ public:
     // The labels every enabled module gives this tab's context, in module order.
     Vector<String> tab_context(Ladybird::Tab& tab);
 
+    bool is_tab_hidden(Ladybird::Tab& tab) const;
+    // Shows and hides tabs in the tab bar as the modules say, and tells the modules (Tree Tabs redraws). With
+    // HideTabs::No it only shows tabs, so a module can bring the next tab into view before hiding the current one.
+    enum class HideTabs : bool {
+        No,
+        Yes,
+    };
+    void update_tab_visibility(HideTabs = HideTabs::Yes);
 
 private:
     virtual void module_enabled_changed(StringView module_id, bool enabled) override;
