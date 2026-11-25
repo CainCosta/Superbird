@@ -7,6 +7,7 @@
 #include <UI/Qt/Application.h>
 #include <UI/Qt/BrowserWindow.h>
 #include <UI/Qt/HubConnection.h>
+#include <UI/Qt/Tab.h>
 #include <UI/Qt/TabBar.h>
 #include <UI/Qt/Superbird/Core/WindowHost.h>
 
@@ -326,6 +327,28 @@ bool WindowHost::is_tab_hidden(Ladybird::Tab& tab) const
             return true;
     }
     return false;
+}
+
+Optional<QColor> WindowHost::tab_marker_color(Ladybird::Tab& tab)
+{
+    auto* window = tab.browser_window();
+    if (!window)
+        return {};
+    for (auto const& module : window->superbird().m_modules) {
+        if (!ModuleRegistry::the().is_enabled(module->id()))
+            continue;
+        if (auto rgb = module->tab_marker_rgb(tab); rgb.has_value())
+            return QColor::fromRgb(*rgb);
+    }
+    return {};
+}
+
+void WindowHost::tab_markers_changed()
+{
+    if (auto* tab_bar = m_window.tab_widget().tab_bar())
+        tab_bar->update();
+    for (auto& module : m_modules)
+        module->on_tab_markers_changed();
 }
 
 void WindowHost::update_tab_visibility(HideTabs hide_tabs)

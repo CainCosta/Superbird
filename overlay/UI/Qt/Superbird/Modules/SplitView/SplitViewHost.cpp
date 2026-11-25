@@ -190,6 +190,15 @@ QFrame* SplitViewHost::build_pane(Split::PaneId pane_id, Ladybird::Tab& tab)
     return frame;
 }
 
+std::optional<QRect> SplitViewHost::pane_global_rect(Split::PaneId pane) const
+{
+    auto it = m_panes.find(pane);
+    if (it == m_panes.end() || !it->value.frame)
+        return {};
+    auto* frame = it->value.frame.data();
+    return QRect(frame->mapToGlobal(QPoint(0, 0)), frame->size());
+}
+
 void SplitViewHost::update_titles()
 {
     for (auto& it : m_panes) {

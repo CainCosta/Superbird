@@ -95,6 +95,8 @@ if (SUPERBIRD_MODULE_SPLIT_VIEW)
     target_sources(ladybird_impl PRIVATE
         Superbird/Modules/SplitView/SplitLayout.cpp
         Superbird/Modules/SplitView/SplitLayout.h
+        Superbird/Modules/SplitView/SplitStore.cpp
+        Superbird/Modules/SplitView/SplitStore.h
         Superbird/Modules/SplitView/SplitViewActions.cpp
         Superbird/Modules/SplitView/SplitViewActions.h
         Superbird/Modules/SplitView/SplitViewHost.cpp

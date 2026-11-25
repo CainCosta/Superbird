@@ -14,11 +14,13 @@
 
 #include <QPoint>
 #include <QPointer>
+#include <QRect>
 
 #include <optional>
 
 class QAction;
 class QMenu;
+class QTimer;
 
 namespace Ladybird {
 class BrowserWindow;
@@ -55,12 +57,23 @@ public:
     virtual void on_tab_visibility_changed() override;
     virtual void attach_tab_context_menu(Ladybird::Tab&, QMenu&) override;
     virtual void update_tab_context_menu(Ladybird::Tab&) override;
+    virtual void on_tab_session_id_assigned(Ladybird::Tab&) override;
+    virtual void on_tabs_restored() override;
+    virtual Optional<u32> tab_marker_rgb(Ladybird::Tab&) const override;
 
     bool can_run(SplitCommand) const;
     void run(SplitCommand);
 
     // A tab dragged out of the tab strip and dropped near an edge of this window's page splits the page with it.
     bool drop_tab_at(Ladybird::Tab&, QPoint global_position);
+
+    // Where a tab dropped at this point would go: beside which edge, and the area (on screen) it would take.
+    struct DropTarget {
+        Split::Orientation orientation;
+        bool goes_first { false };
+        QRect area;
+    };
+    std::optional<DropTarget> drop_target_at(Ladybird::Tab&, QPoint global_position);
 
 private:
     bool is_enabled() const;
@@ -83,6 +96,9 @@ private:
         Yes,
     };
     void update_pane_visibility(PanesShown);
+    // After the group changed (tabs joined or left, or its shape changed): redraw the tab markers and save it soon.
+    void layout_changed();
+    void persist_now();
 
     Ladybird::BrowserWindow& m_window;
     std::optional<Split::SplitLayout> m_layout;
@@ -90,6 +106,7 @@ private:
     HashMap<Ladybird::Tab*, Split::PaneId> m_pane_ids;
     Split::PaneId m_next_pane_id { 1 };
     bool m_changing { false };
+    QPointer<QTimer> m_persist_timer;
     HashMap<Ladybird::Tab*, QPointer<QAction>> m_split_with_current_actions;
     HashMap<Ladybird::Tab*, QPointer<QAction>> m_add_to_split_actions;
 };

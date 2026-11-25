@@ -7,6 +7,7 @@
 #pragma once
 
 #include <AK/Forward.h>
+#include <AK/Optional.h>
 #include <AK/Noncopyable.h>
 #include <AK/StringView.h>
 #include <AK/Vector.h>
@@ -75,6 +76,11 @@ public:
     // only if no enabled module hides it. WindowHost::update_tab_visibility() applies the answers.
     virtual bool is_tab_hidden(Ladybird::Tab&) const { return false; }
     virtual void on_tab_visibility_changed() { }
+
+    // A color (0xRRGGBB) this module marks the tab with in the tab bar and sidebar (e.g. Split View's accent for the tabs
+    // of its split). The first enabled module with one wins. WindowHost::tab_markers_changed() asks for a redraw.
+    virtual Optional<u32> tab_marker_rgb(Ladybird::Tab&) const { return {}; }
+    virtual void on_tab_markers_changed() { }
 
     // Adds items to the context menu of a link in one of this window's tabs (e.g. "Peek in Glance").
     virtual void extend_link_context_menu(Ladybird::Tab&, Ladybird::Menu&, URL::URL const&) { }

@@ -15,6 +15,8 @@
 #include <UI/Qt/Superbird/Core/Module.h>
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
 
+#include <QColor>
+
 class QKeyEvent;
 class QKeySequence;
 class QMenu;
@@ -89,6 +91,10 @@ public:
     Vector<String> tab_context(Ladybird::Tab& tab);
 
     bool is_tab_hidden(Ladybird::Tab& tab) const;
+    // The marker the tab's window's modules give it, if any (see SuperbirdModule::tab_marker_color()).
+    static Optional<QColor> tab_marker_color(Ladybird::Tab& tab);
+    // Redraws the tab bar and tells the modules (Tree Tabs redraws) after a module's markers changed.
+    void tab_markers_changed();
     // Shows and hides tabs in the tab bar as the modules say, and tells the modules (Tree Tabs redraws). With
     // HideTabs::No it only shows tabs, so a module can bring the next tab into view before hiding the current one.
     enum class HideTabs : bool {

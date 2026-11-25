@@ -219,8 +219,109 @@ static void test_split_actions()
     EXPECT(registry.matching_actions().is_empty());
 }
 
+static std::optional<int64_t> save_as_hundreds(PaneId pane)
+{
+    return pane * 100;
+}
+
+static void test_serialize_round_trip()
+{
+    // Three panes: 1 | (2 over 3), with moved ratios and the focus on 3.
+    auto layout = SplitLayout::create(1, 2);
+    EXPECT(layout.has_value());
+    EXPECT(layout->add_pane(3, 2, Orientation::Vertical));
+    EXPECT(layout->set_ratios_around(1, { 0.3, 0.7 }));
+    EXPECT(layout->set_ratios_around(3, { 0.25, 0.75 }));
+    EXPECT(layout->focus(3));
+
+    auto text = layout->serialize(save_as_hundreds);
+    EXPECT(text.has_value());
+    EXPECT(*text == "300|h(3000:100,7000:v(2500:200,7500:300))");
+
+    // Saved ids map to new panes (as tabs get new pointers and pane ids after a restart).
+    auto restored = SplitLayout::deserialize(*text, [](int64_t saved) -> std::optional<PaneId> { return saved / 100 + 10; });
+    EXPECT(restored.has_value());
+    EXPECT(restored->panes() == std::vector<PaneId>({ 11, 12, 13 }));
+    EXPECT(restored->focused() == 13);
+    EXPECT(restored->root().orientation == Orientation::Horizontal);
+    EXPECT(std::fabs(restored->ratios_around(11)[0] - 0.3) < 1e-6);
+    EXPECT(std::fabs(restored->ratios_around(13)[1] - 0.75) < 1e-6);
+    EXPECT(restored->serialize([](PaneId pane) -> std::optional<int64_t> { return (pane - 10) * 100; }) == text);
+
+    // A pane with no saved id can't be saved.
+    EXPECT(!layout->serialize([](PaneId pane) -> std::optional<int64_t> {
+        if (pane == 2)
+            return {};
+        return pane;
+    }));
+}
+
+static void test_deserialize_with_overlapping_ids()
+{
+    // Saved ids 1 and 2 map to panes 2 and 1: the swap mustn't trip over a pane that's still to be renamed.
+    auto restored = SplitLayout::deserialize("1|h(5000:1,5000:2)", [](int64_t saved) -> std::optional<PaneId> { return 3 - saved; });
+    EXPECT(restored.has_value());
+    EXPECT(restored->panes() == std::vector<PaneId>({ 2, 1 }));
+    EXPECT(restored->focused() == 2);
+}
+
+static void test_deserialize_drops_missing_tabs()
+{
+    auto text = "2|h(3333:1,3333:2,3334:3)";
+    // Tab 2 (the focused one) didn't come back: the others share its room and the focus moves on.
+    auto restored = SplitLayout::deserialize(text, [](int64_t saved) -> std::optional<PaneId> {
+        if (saved == 2)
+            return {};
+        return saved;
+    });
+    EXPECT(restored.has_value());
+    EXPECT(restored->panes() == std::vector<PaneId>({ 1, 3 }));
+    EXPECT(restored->contains(restored->focused()));
+
+    // With only one tab back, there's no split.
+    EXPECT(!SplitLayout::deserialize("1|h(5000:1,5000:2)", [](int64_t saved) -> std::optional<PaneId> {
+        if (saved == 1)
+            return 7;
+        return {};
+    }));
+    // Two saved ids finding the same pane count as one.
+    EXPECT(!SplitLayout::deserialize("1|h(5000:1,5000:2)", [](int64_t) -> std::optional<PaneId> { return 5; }));
+}
+
+static void test_deserialize_rejects_bad_text()
+{
+    auto identity = [](int64_t saved) -> std::optional<PaneId> { return saved; };
+    char const* bad[] = {
+        "",
+        "1",
+        "1|",
+        "1|5",
+        "x|h(5000:1,5000:2)",
+        "1|h(5000:1)",
+        "1|h(5000:1,5000:2",
+        "1|h(5000:1,5000:2))",
+        "1|h(5000:1,5000:1)",
+        "1|q(5000:1,5000:2)",
+        "1|h(1:1,1:2,1:3,1:4,1:5)",
+        "1|h(-5:1,5000:2)",
+        "1|h(5000:1,5000:v(5000:v(5000:v(5000:v(5000:v(5000:2,5000:3),5000:4),5000:5),5000:6),5000:7))",
+    };
+    for (auto const* text : bad)
+        EXPECT(!SplitLayout::deserialize(text, identity));
+
+    // Ratios are normalized as they're read.
+    auto restored = SplitLayout::deserialize("9|v(1:1,3:2)", identity);
+    EXPECT(restored.has_value());
+    EXPECT(restored->focused() == 1);
+    EXPECT(std::fabs(restored->ratios_around(1)[0] - 0.25) < 1e-6);
+}
+
 int main()
 {
+    test_serialize_round_trip();
+    test_deserialize_with_overlapping_ids();
+    test_deserialize_drops_missing_tabs();
+    test_deserialize_rejects_bad_text();
     test_split_actions();
     test_create_split();
     test_focus_switch();

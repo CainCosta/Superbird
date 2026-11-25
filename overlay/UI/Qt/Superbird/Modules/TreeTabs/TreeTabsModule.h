@@ -68,6 +68,7 @@ public:
 
     virtual void append_tab_context(Ladybird::Tab& tab, Vector<String>& labels) override;
     virtual void on_tab_visibility_changed() override;
+    virtual void on_tab_markers_changed() override;
 
 private:
     struct TabMenuActions {

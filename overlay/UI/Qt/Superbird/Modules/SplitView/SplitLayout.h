@@ -8,8 +8,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace Superbird::Split {
@@ -83,6 +86,14 @@ public:
     std::vector<double> ratios_around(PaneId) const;
     // Every split gets equal shares.
     void equalize();
+
+    // Saving and restoring: the layout as text, with each pane written as the id `save_id` gives it (Split View uses
+    // the tab's SessionTabId, which outlives the session). Fails if a pane has no id.
+    //     "<focused>|h(5000:12,5000:v(5000:13,5000:14))", with ratios in ten-thousandths
+    std::optional<std::string> serialize(std::function<std::optional<int64_t>(PaneId)> const& save_id) const;
+    // Reads text back, giving each saved id the pane `pane_for` finds for it. A saved id with no pane (its tab didn't
+    // come back) leaves the layout, so this fails only for text it can't read or with fewer than two panes left.
+    static std::optional<SplitLayout> deserialize(std::string_view, std::function<std::optional<PaneId>(int64_t)> const& pane_for);
 
 private:
     SplitLayout() = default;

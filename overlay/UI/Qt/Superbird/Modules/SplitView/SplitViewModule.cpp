@@ -8,19 +8,26 @@
 #include <UI/Qt/BrowserWindow.h>
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
 #include <UI/Qt/Superbird/Core/WindowHost.h>
+#include <UI/Qt/Superbird/Modules/SplitView/SplitStore.h>
 #include <UI/Qt/Superbird/Modules/SplitView/SplitViewHost.h>
 #include <UI/Qt/Superbird/Modules/SplitView/SplitViewModule.h>
 #include <UI/Qt/Tab.h>
 #include <UI/Qt/TabBar.h>
+#include <UI/Qt/Theme.h>
 
 #include <QAction>
 #include <QApplication>
 #include <QMenu>
+#include <QCursor>
+#include <QPainter>
+#include <QPainterPath>
+#include <QTimer>
 
 namespace Superbird {
 
 // A tab dropped this close to an edge of the page (as a share of its width or height) splits toward that edge.
 static constexpr double EDGE_ZONE = 0.3;
+static constexpr int PERSIST_DELAY_MS = 400;
 
 namespace {
 
@@ -52,6 +59,105 @@ public:
     }
 };
 
+// Shows where a tab being dragged would land in a split: a tinted area over the page, as a window of its own, since
+// nothing painted inside the window can cover the page's native view.
+class DropIndicator final : public QWidget {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    DropIndicator()
+        : QWidget(nullptr, Qt::ToolTip | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint | Qt::WindowTransparentForInput)
+    {
+        setAttribute(Qt::WA_TranslucentBackground);
+        setAttribute(Qt::WA_ShowWithoutActivating);
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+    }
+
+    void show_over(QRect const& area)
+    {
+        auto rect = area.adjusted(INSET, INSET, -INSET, -INSET);
+        if (geometry() != rect)
+            setGeometry(rect);
+        if (!isVisible())
+            show();
+        raise();
+    }
+
+private:
+    static constexpr int INSET = 6;
+
+    virtual void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        auto accent = Ladybird::Theme::accent();
+        auto fill = accent;
+        fill.setAlphaF(0.16);
+        QPainterPath path;
+        path.addRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), 10, 10);
+        painter.fillPath(path, fill);
+        painter.setPen(QPen(accent, 2));
+        painter.drawPath(path);
+    }
+};
+
+// Follows a loose tab around while it's dragged, showing where it would land in the window under the pointer.
+class DropIndicatorDriver {
+public:
+    static void set_dragged_tab(Ladybird::Tab* tab)
+    {
+        static QPointer<QTimer> timer;
+        static QPointer<DropIndicator> indicator;
+        static QPointer<Ladybird::Tab> dragged;
+        dragged = tab;
+        if (!tab) {
+            if (timer)
+                timer->stop();
+            if (indicator)
+                indicator->hide();
+            return;
+        }
+        if (!timer) {
+            timer = new QTimer(qApp);
+            timer->setInterval(33);
+            QObject::connect(timer, &QTimer::timeout, qApp, [] {
+                auto target = dragged ? target_at(*dragged, QCursor::pos()) : std::optional<QRect> {};
+                if (!target.has_value()) {
+                    if (indicator)
+                        indicator->hide();
+                    return;
+                }
+                if (!indicator)
+                    indicator = new DropIndicator;
+                indicator->show_over(*target);
+            });
+        }
+        timer->start();
+    }
+
+private:
+    static std::optional<QRect> target_at(Ladybird::Tab& tab, QPoint position)
+    {
+        // NB: The indicator is a window too, so the window under the pointer is found by geometry rather than asked of Qt.
+        Ladybird::BrowserWindow* window = nullptr;
+        if (auto* active = Ladybird::Application::the().active_window_if_any(); active && active->frameGeometry().contains(position))
+            window = active;
+        for (auto* widget : QApplication::topLevelWidgets()) {
+            if (window)
+                break;
+            if (auto* candidate = dynamic_cast<Ladybird::BrowserWindow*>(widget); candidate && candidate->isVisible() && candidate->frameGeometry().contains(position))
+                window = candidate;
+        }
+        auto* module = ActiveWindowSplitHandler::module_of(window);
+        if (!module)
+            return {};
+        auto target = module->drop_target_at(tab, position);
+        if (!target.has_value())
+            return {};
+        return target->area;
+    }
+};
+
 }
 
 ModuleInfo SplitViewModule::module_info()
@@ -71,6 +177,10 @@ SplitViewModule::SplitViewModule(Ladybird::BrowserWindow& window)
 
 SplitViewModule::~SplitViewModule()
 {
+    if (m_persist_timer && m_persist_timer->isActive())
+        persist_now();
+    if (m_persist_timer)
+        delete m_persist_timer.data();
     // NB: The window takes its tabs down after its modules, so they go back to it now.
     hide_split();
 }
@@ -149,8 +259,8 @@ void SplitViewModule::show_split()
     m_host->on_swap = [this] { run(SplitCommand::SwapPanes); };
     m_host->on_unsplit = [this] { unsplit(); };
     m_host->on_ratios_changed = [this](auto pane, auto ratios) {
-        if (m_layout)
-            m_layout->set_ratios_around(pane, std::move(ratios));
+        if (m_layout && m_layout->set_ratios_around(pane, std::move(ratios)))
+            layout_changed();
     };
     m_host->rebuild(*m_layout, [this](auto pane) { return tab_for(pane); });
     tabs.set_page_host(m_host);
@@ -193,12 +303,16 @@ void SplitViewModule::relayout()
     hide_split();
     if (auto* current = m_window.current_tab(); current && m_layout->contains(pane_for(*current)))
         show_split();
+    layout_changed();
 }
 
 void SplitViewModule::unsplit()
 {
     hide_split();
+    auto had_layout = m_layout.has_value();
     m_layout.reset();
+    if (had_layout)
+        layout_changed();
 }
 
 void SplitViewModule::split_with(Ladybird::Tab& first, Ladybird::Tab& second, Split::Orientation orientation)
@@ -211,6 +325,7 @@ void SplitViewModule::split_with(Ladybird::Tab& first, Ladybird::Tab& second, Sp
         return;
     show_split();
     focus_pane(pane_for(first));
+    layout_changed();
 }
 
 void SplitViewModule::split_grid()
@@ -232,6 +347,7 @@ void SplitViewModule::split_grid()
         return;
     show_split();
     focus_pane(pane_for(*current));
+    layout_changed();
 }
 
 void SplitViewModule::add_to_split(Ladybird::Tab& tab, Split::Orientation orientation)
@@ -251,10 +367,12 @@ void SplitViewModule::remove_from_split(Split::PaneId pane)
     m_layout->remove_pane(pane);
     if (m_layout->pane_count() < 2) {
         m_layout.reset();
+        layout_changed();
         return;
     }
     show_split();
     focus_pane(m_layout->focused());
+    layout_changed();
 }
 
 void SplitViewModule::focus_pane(Split::PaneId pane)
@@ -324,10 +442,12 @@ void SplitViewModule::on_tab_removed(Ladybird::Tab& tab)
     hide_split();
     if (!m_layout->remove_pane(*pane) || m_layout->pane_count() < 2) {
         m_layout.reset();
+        layout_changed();
         return;
     }
     if (auto* current = m_window.current_tab(); current && m_layout->contains(pane_for(*current)))
         show_split();
+    layout_changed();
 }
 
 void SplitViewModule::on_tab_replaced(Ladybird::Tab const& old_tab, Ladybird::Tab& new_tab)
@@ -344,6 +464,94 @@ void SplitViewModule::on_tab_replaced(Ladybird::Tab const& old_tab, Ladybird::Ta
         hide_split();
         show_split();
     }
+    if (m_layout && m_layout->contains(*pane))
+        layout_changed();
+}
+
+void SplitViewModule::on_tab_session_id_assigned(Ladybird::Tab& tab)
+{
+    // A tab of the group can be saved by its id only now.
+    if (auto pane = m_pane_ids.get(&tab); pane.has_value() && m_layout && m_layout->contains(*pane))
+        layout_changed();
+}
+
+void SplitViewModule::on_tabs_restored()
+{
+    // NB: Only a window restored from the session takes its saved split; a new window's id may be one a closed window
+    //     left a row under, which its first save replaces.
+    if (!is_enabled() || m_layout)
+        return;
+    auto window_id = m_window.session_window_id();
+    if (!window_id.has_value())
+        return;
+    auto text = SplitStore::the(m_window.is_private() == WebView::IsPrivate::Yes).load_window(*window_id);
+    if (!text.has_value())
+        return;
+    auto restored = Split::SplitLayout::deserialize(std::string_view(text->characters(), text->length()),
+        [this](int64_t session_tab_id) -> std::optional<Split::PaneId> {
+            for (int index = 0; index < m_window.tab_count(); ++index) {
+                auto* tab = m_window.tab_at(index);
+                if (tab && tab->session_tab_id() == session_tab_id)
+                    return pane_for(*tab);
+            }
+            return {};
+        });
+    if (!restored)
+        return;
+    m_layout = AK::move(*restored);
+    if (auto* current = m_window.current_tab(); current && m_layout->contains(pane_for(*current))) {
+        show_split();
+        focus_pane(pane_for(*current));
+    }
+    m_window.superbird().tab_markers_changed();
+}
+
+Optional<u32> SplitViewModule::tab_marker_rgb(Ladybird::Tab& tab) const
+{
+    if (!m_layout)
+        return {};
+    auto pane = m_pane_ids.get(&tab);
+    if (!pane.has_value() || !m_layout->contains(*pane))
+        return {};
+    return Ladybird::Theme::accent().rgb() & 0xFFFFFF;
+}
+
+void SplitViewModule::layout_changed()
+{
+    m_window.superbird().tab_markers_changed();
+    if (!m_persist_timer) {
+        m_persist_timer = new QTimer(&m_window);
+        m_persist_timer->setSingleShot(true);
+        m_persist_timer->setInterval(PERSIST_DELAY_MS);
+        QObject::connect(m_persist_timer, &QTimer::timeout, &m_window, [this] { persist_now(); });
+    }
+    m_persist_timer->start();
+}
+
+void SplitViewModule::persist_now()
+{
+    if (m_persist_timer)
+        m_persist_timer->stop();
+    auto window_id = m_window.session_window_id();
+    if (!window_id.has_value())
+        return;
+    auto& store = SplitStore::the(m_window.is_private() == WebView::IsPrivate::Yes);
+    if (!m_layout) {
+        store.save_window(*window_id, {});
+        return;
+    }
+    auto text = m_layout->serialize([this](Split::PaneId pane) -> std::optional<int64_t> {
+        auto* tab = tab_for(pane);
+        if (!tab)
+            return {};
+        auto id = tab->session_tab_id();
+        if (!id.has_value())
+            return {};
+        return *id;
+    });
+    // NB: A tab with no session row yet can't be saved by; its id arriving saves the group again.
+    if (text.has_value())
+        store.save_window(*window_id, ByteString(text->data(), text->size()));
 }
 
 void SplitViewModule::on_tab_metadata_changed()
@@ -394,49 +602,74 @@ void SplitViewModule::update_tab_context_menu(Ladybird::Tab& tab)
         (*action)->setVisible(enabled && is_shown() && !in_split && m_layout->pane_count() < Split::MAXIMUM_PANES);
 }
 
-bool SplitViewModule::drop_tab_at(Ladybird::Tab& tab, QPoint global_position)
+std::optional<SplitViewModule::DropTarget> SplitViewModule::drop_target_at(Ladybird::Tab& tab, QPoint global_position)
 {
     if (!is_enabled() || m_window.tab_index(&tab) < 0)
-        return false;
+        return {};
     QWidget* page = m_host ? static_cast<QWidget*>(m_host.data()) : nullptr;
     auto* current = m_window.current_tab();
     if (!page && current && current->is_loaded())
         page = &current->view();
-    if (!page)
-        return false;
+    if (!page || !page->isVisible())
+        return {};
 
     auto local = page->mapFromGlobal(global_position);
     if (!page->rect().contains(local))
-        return false;
+        return {};
     auto x = static_cast<double>(local.x()) / page->width();
     auto y = static_cast<double>(local.y()) / page->height();
 
-    std::optional<Split::Orientation> orientation;
-    bool goes_first = false;
+    DropTarget target { .orientation = Split::Orientation::Horizontal, .goes_first = false, .area = {} };
     if (x < EDGE_ZONE) {
-        orientation = Split::Orientation::Horizontal;
-        goes_first = true;
+        target.goes_first = true;
     } else if (x > 1 - EDGE_ZONE) {
-        orientation = Split::Orientation::Horizontal;
     } else if (y < EDGE_ZONE) {
-        orientation = Split::Orientation::Vertical;
-        goes_first = true;
+        target.orientation = Split::Orientation::Vertical;
+        target.goes_first = true;
     } else if (y > 1 - EDGE_ZONE) {
-        orientation = Split::Orientation::Vertical;
+        target.orientation = Split::Orientation::Vertical;
+    } else {
+        return {};
     }
-    if (!orientation.has_value())
-        return false;
+
+    auto half_of = [&](QRect rect, bool first) {
+        if (target.orientation == Split::Orientation::Horizontal)
+            return first ? QRect(rect.left(), rect.top(), rect.width() / 2, rect.height()) : QRect(rect.left() + rect.width() / 2, rect.top(), rect.width() - rect.width() / 2, rect.height());
+        return first ? QRect(rect.left(), rect.top(), rect.width(), rect.height() / 2) : QRect(rect.left(), rect.top() + rect.height() / 2, rect.width(), rect.height() - rect.height() / 2);
+    };
 
     if (m_host && m_layout) {
-        if (m_layout->contains(pane_for(tab)) || m_layout->pane_count() >= Split::MAXIMUM_PANES)
-            return false;
-        add_to_split(tab, *orientation);
-        return true;
+        // The tab joins the split beside its focused pane, after it.
+        auto pane = m_pane_ids.get(&tab);
+        if ((pane.has_value() && m_layout->contains(*pane)) || m_layout->pane_count() >= Split::MAXIMUM_PANES)
+            return {};
+        auto focused_rect = m_host->pane_global_rect(m_layout->focused());
+        if (!focused_rect.has_value())
+            return {};
+        target.goes_first = false;
+        target.area = half_of(*focused_rect, false);
+        return target;
     }
     if (!current || current == &tab)
+        return {};
+    target.area = half_of(QRect(page->mapToGlobal(QPoint(0, 0)), page->size()), target.goes_first);
+    return target;
+}
+
+bool SplitViewModule::drop_tab_at(Ladybird::Tab& tab, QPoint global_position)
+{
+    auto target = drop_target_at(tab, global_position);
+    if (!target.has_value())
         return false;
-    split_with(*current, tab, *orientation);
-    if (goes_first && m_layout) {
+    if (m_host && m_layout) {
+        add_to_split(tab, target->orientation);
+        return true;
+    }
+    auto* current = m_window.current_tab();
+    if (!current)
+        return false;
+    split_with(*current, tab, target->orientation);
+    if (target->goes_first && m_layout) {
         m_layout->swap(pane_for(*current), pane_for(tab));
         relayout();
         focus_pane(pane_for(tab));
@@ -542,6 +775,9 @@ void SplitViewModule::register_actions(ModuleRegistry& registry)
         auto* window = widget ? dynamic_cast<Ladybird::BrowserWindow*>(widget->window()) : nullptr;
         auto* module = ActiveWindowSplitHandler::module_of(window);
         return module && module->drop_tab_at(tab, global_position);
+    };
+    Ladybird::TabBar::on_loose_tab_drag_changed = [](Ladybird::Tab* tab) {
+        DropIndicatorDriver::set_dragged_tab(tab);
     };
 }
 

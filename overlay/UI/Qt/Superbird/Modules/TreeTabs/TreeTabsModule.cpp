@@ -311,6 +311,12 @@ void TreeTabsModule::on_tab_visibility_changed()
         m_controller->refresh_view();
 }
 
+void TreeTabsModule::on_tab_markers_changed()
+{
+    if (m_controller->is_enabled())
+        m_controller->refresh_view();
+}
+
 void TreeTabsModule::append_tab_context(Ladybird::Tab& tab, Vector<String>& labels)
 {
     if (!m_controller->is_enabled())

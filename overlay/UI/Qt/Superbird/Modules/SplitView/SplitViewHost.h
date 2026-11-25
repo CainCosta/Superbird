@@ -9,9 +9,12 @@
 #include <AK/Function.h>
 #include <AK/HashMap.h>
 #include <AK/kmalloc.h>
+
+#include <optional>
 #include <UI/Qt/Superbird/Modules/SplitView/SplitLayout.h>
 
 #include <QPointer>
+#include <QRect>
 #include <QWidget>
 
 class QFrame;
@@ -28,6 +31,9 @@ namespace Superbird {
 // slim header (title, swap, remove-from-split) and an accent border on the focused pane.
 class SplitViewHost final : public QWidget {
 public:
+    // Where a pane's frame is on screen, if the pane is here.
+    std::optional<QRect> pane_global_rect(Split::PaneId) const;
+
     AK_ALLOC_WITH_KMALLOC;
 
     explicit SplitViewHost(QWidget* parent = nullptr);

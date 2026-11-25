@@ -12,6 +12,7 @@
 #include <UI/Qt/StringUtils.h>
 #include <UI/Qt/Tab.h>
 #include <UI/Qt/Theme.h>
+#include <UI/Qt/Superbird/Core/WindowHost.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabController.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabFilter.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabView.h>
@@ -518,6 +519,13 @@ void TreeTabView::paint_tree_row(QPainter& painter, int row_index, QRect const& 
         QPainterPath accent_bar;
         accent_bar.addRoundedRect(QRectF(row_rect.left() + 1, row_rect.top() + 5, 3, row_rect.height() - 10), 1.5, 1.5);
         painter.fillPath(accent_bar, Theme::accent());
+    }
+
+    // A tab another module groups (in a Split View, say) wears that group's color at the row's trailing edge.
+    if (auto marker = Superbird::WindowHost::tab_marker_color(*tab); marker.has_value()) {
+        QPainterPath marker_bar;
+        marker_bar.addRoundedRect(QRectF(row_rect.right() - 3.5, row_rect.top() + 7, 2.5, row_rect.height() - 14), 1.25, 1.25);
+        painter.fillPath(marker_bar, *marker);
     }
 
     // Collapsed rail mode: compact centered favicon + tiny nesting bar

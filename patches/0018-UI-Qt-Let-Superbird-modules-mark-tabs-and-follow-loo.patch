@@ -1,0 +1,90 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 09:01:25 -0600
+Subject: [PATCH] UI/Qt: Let Superbird modules mark tabs and follow loose tab
+ drags
+
+A tab a Superbird module groups (in a Split View, say) wears the group's
+color as a bar along its edge in the tab bar, and Split View is told when
+a tab comes loose from its strip and when it's let go, to show where the
+tab would land.
+
+diff --git a/UI/Qt/Tab.h b/UI/Qt/Tab.h
+index 68123609..30e888b2 100644
+--- a/UI/Qt/Tab.h
++++ b/UI/Qt/Tab.h
+@@ -150,6 +150,7 @@ public:
+     Optional<Compositing::CompositorLayersDescription> const& compositor_layers() const { return m_compositor_layers; }
+ 
+     void set_window(BrowserWindow&);
++    BrowserWindow* browser_window() const { return m_window; }
+     void update_hover_label();
+     // The link under the pointer, as the hover label shows it (Superbird Glance opens it on Alt/Option+click).
+     QString const& hovered_link() const { return m_hover_text; }
+diff --git a/UI/Qt/TabBar.cpp b/UI/Qt/TabBar.cpp
+index 046d019b..3e4fedf2 100644
+--- a/UI/Qt/TabBar.cpp
++++ b/UI/Qt/TabBar.cpp
+@@ -19,6 +19,7 @@
+ #include <UI/Qt/ApplicationActions.h>
+ #include <UI/Qt/Bookmarks.h>
+ #include <UI/Qt/BrowserWindow.h>
++#include <UI/Qt/Superbird/Core/WindowHost.h>
+ #include <UI/Qt/ChromeLayout.h>
+ #include <UI/Qt/ChromeStyle.h>
+ #include <UI/Qt/Icon.h>
+@@ -263,6 +264,7 @@ static void set_dynamic_property_if_needed(QWidget& widget, char const* property
+ static QPointer<TabWidget> s_active_tab_drag_source;
+ static QPointer<Tab> s_active_tab_dragged_tab;
+ Function<bool(Tab&, QPoint)> TabBar::on_tab_dropped_outside_strips;
++Function<void(Tab*)> TabBar::on_loose_tab_drag_changed;
+ static QPointer<TabWidget> s_pending_tab_drop_target;
+ static int s_pending_tab_drop_index { -1 };
+ // A tab dragged in a window of its own stays in that window's strip, rather than leaving a gap there.
+@@ -1308,6 +1310,15 @@ void TabBar::paintEvent(QPaintEvent*)
+         auto needs_attention = tab_for_index && tab_for_index->needs_attention() && !is_selected;
+         auto favicon_shrink = tab_for_index ? tab_for_index->loading_favicon_shrink() : 0;
+         auto favicon_opacity = tab_for_index && !tab_for_index->is_loaded() ? UNLOADED_TAB_FAVICON_OPACITY : 1.0;
++        // Superbird: A tab a module groups (in a Split View, say) wears the group's color as a bar along its edge.
++        if (auto marker = tab_for_index ? Superbird::WindowHost::tab_marker_color(*tab_for_index) : Optional<QColor> {}; marker.has_value()) {
++            auto bar = is_vertical
++                ? QRectF(shape_rect.right() - 4, shape_rect.top() + 7, 2.5, max(0.0, shape_rect.height() - 14))
++                : QRectF(shape_rect.left() + 10, shape_rect.bottom() - 3, max(0.0, shape_rect.width() - 20), 2.5);
++            QPainterPath bar_path;
++            bar_path.addRoundedRect(bar, 1.25, 1.25);
++            painter.fillPath(bar_path, *marker);
++        }
+         auto paint_icon = [&](QRect const& icon_rect, Optional<QRect> favicon_clip = {}) {
+             if (ring_opacity > 0) {
+                 painter.save();
+@@ -2344,12 +2355,16 @@ void TabBar::drag_tab_loose(Tab& tab, QPixmap card)
+         QApplication::instance()->installEventFilter(&cancellation_filter);
+     });
+ 
++    if (on_loose_tab_drag_changed)
++        on_loose_tab_drag_changed(dragged_tab.data());
+ #if defined(AK_OS_MACOS)
+     auto action = execute_appkit_tab_drag(*this, *drag);
+ #else
+     auto action = drag->exec(Qt::MoveAction, Qt::MoveAction);
+ #endif
+     QApplication::instance()->removeEventFilter(&cancellation_filter);
++    if (on_loose_tab_drag_changed)
++        on_loose_tab_drag_changed(nullptr);
+ 
+     // NB: On Wayland, a drag dropped where no window takes it ends just as one canceled with Escape does, and the
+     //     compositor keeps the Escape key to itself. A tab dropped away from every tab strip is detached, as it is
+diff --git a/UI/Qt/TabBar.h b/UI/Qt/TabBar.h
+index 1a18d194..9ef4ac08 100644
+--- a/UI/Qt/TabBar.h
++++ b/UI/Qt/TabBar.h
+@@ -85,6 +85,9 @@ public:
+     // Superbird Split View: offered a tab dropped away from every tab strip, before it would open in a window of its
+     // own. Returns whether it took the tab.
+     static Function<bool(Tab&, QPoint global_position)> on_tab_dropped_outside_strips;
++    // Superbird Split View: told when a tab comes loose and follows the pointer (and with nothing once it's let go, before
++    // it's dropped), to show where it would land.
++    static Function<void(Tab*)> on_loose_tab_drag_changed;
+ 
+     AK_ALLOC_WITH_KMALLOC;
+ 

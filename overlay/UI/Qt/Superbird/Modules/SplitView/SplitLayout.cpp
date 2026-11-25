@@ -7,7 +7,9 @@
 #include <UI/Qt/Superbird/Modules/SplitView/SplitLayout.h>
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
+#include <set>
 
 namespace Superbird::Split {
 
@@ -321,6 +323,170 @@ std::vector<double> SplitLayout::ratios_around(PaneId pane) const
 void SplitLayout::equalize()
 {
     equalize_node(*m_root);
+}
+
+
+namespace {
+
+constexpr double RATIO_SCALE = 10000;
+
+bool write_node(SplitLayout::Node const& node, std::function<std::optional<int64_t>(PaneId)> const& save_id, std::string& out)
+{
+    if (node.is_leaf()) {
+        auto id = save_id(*node.pane);
+        if (!id.has_value())
+            return false;
+        out += std::to_string(*id);
+        return true;
+    }
+    out += node.orientation == Orientation::Horizontal ? "h(" : "v(";
+    for (size_t index = 0; index < node.children.size(); ++index) {
+        if (index > 0)
+            out += ',';
+        // NB: Ratios are written in ten-thousandths, as whole numbers, so the text doesn't depend on the locale's decimal point.
+        auto ratio = index < node.ratios.size() ? node.ratios[index] : 0.0;
+        out += std::to_string(std::llround(ratio * RATIO_SCALE));
+        out += ':';
+        if (!write_node(*node.children[index], save_id, out))
+            return false;
+    }
+    out += ')';
+    return true;
+}
+
+class Reader {
+public:
+    explicit Reader(std::string_view text)
+        : m_text(text)
+    {
+    }
+
+    bool at_end() const { return m_position >= m_text.size(); }
+
+    bool consume(char c)
+    {
+        if (at_end() || m_text[m_position] != c)
+            return false;
+        ++m_position;
+        return true;
+    }
+
+    std::optional<int64_t> read_integer()
+    {
+        int64_t value = 0;
+        auto const* begin = m_text.data() + m_position;
+        auto [end, error] = std::from_chars(begin, m_text.data() + m_text.size(), value);
+        if (error != std::errc {} || end == begin)
+            return {};
+        m_position += static_cast<size_t>(end - begin);
+        return value;
+    }
+
+    std::optional<double> read_ratio()
+    {
+        auto value = read_integer();
+        if (!value.has_value() || *value < 0)
+            return {};
+        return static_cast<double>(*value) / RATIO_SCALE;
+    }
+
+    std::unique_ptr<SplitLayout::Node> read_node(int depth)
+    {
+        if (depth > 4 || at_end())
+            return nullptr;
+        auto kind = m_text[m_position];
+        if (kind != 'h' && kind != 'v') {
+            auto id = read_integer();
+            if (!id.has_value())
+                return nullptr;
+            return make_leaf(*id);
+        }
+        ++m_position;
+        if (!consume('('))
+            return nullptr;
+        std::vector<std::unique_ptr<SplitLayout::Node>> children;
+        std::vector<double> ratios;
+        do {
+            auto ratio = read_ratio();
+            if (!ratio.has_value() || !consume(':'))
+                return nullptr;
+            auto child = read_node(depth + 1);
+            if (!child)
+                return nullptr;
+            ratios.push_back(*ratio);
+            children.push_back(std::move(child));
+            if (children.size() > MAXIMUM_PANES)
+                return nullptr;
+        } while (consume(','));
+        if (!consume(')') || children.size() < 2)
+            return nullptr;
+        auto node = make_split(kind == 'h' ? Orientation::Horizontal : Orientation::Vertical, std::move(children));
+        node->ratios = normalize_ratios(std::move(ratios));
+        return node;
+    }
+
+private:
+    std::string_view m_text;
+    size_t m_position { 0 };
+};
+
+}
+
+std::optional<std::string> SplitLayout::serialize(std::function<std::optional<int64_t>(PaneId)> const& save_id) const
+{
+    auto focused = save_id(m_focused);
+    if (!focused.has_value())
+        return {};
+    std::string out = std::to_string(*focused);
+    out += '|';
+    if (!write_node(*m_root, save_id, out))
+        return {};
+    return out;
+}
+
+std::optional<SplitLayout> SplitLayout::deserialize(std::string_view text, std::function<std::optional<PaneId>(int64_t)> const& pane_for)
+{
+    Reader reader(text);
+    auto saved_focus = reader.read_integer();
+    if (!saved_focus.has_value() || !reader.consume('|'))
+        return {};
+    auto root = reader.read_node(0);
+    if (!root || !reader.at_end() || root->is_leaf())
+        return {};
+
+    SplitLayout layout;
+    layout.m_root = std::move(root);
+    auto saved_ids = layout.panes();
+    if (saved_ids.size() > MAXIMUM_PANES || std::set<PaneId>(saved_ids.begin(), saved_ids.end()).size() != saved_ids.size())
+        return {};
+    layout.m_focused = std::find(saved_ids.begin(), saved_ids.end(), *saved_focus) != saved_ids.end() ? *saved_focus : saved_ids.front();
+
+    // NB: Saved ids and pane ids are both small numbers, so the panes first take ids no pane has (negative ones), and
+    //     only then the panes found for them, so no replacement lands on a pane that's still to be replaced.
+    std::optional<PaneId> focused_pane;
+    for (size_t index = 0; index < saved_ids.size(); ++index)
+        layout.replace_pane(saved_ids[index], -static_cast<PaneId>(index) - 1);
+    std::set<PaneId> found;
+    for (size_t index = 0; index < saved_ids.size(); ++index) {
+        auto placeholder = -static_cast<PaneId>(index) - 1;
+        auto pane = pane_for(saved_ids[index]);
+        if (!pane.has_value() || *pane < 0 || found.contains(*pane)) {
+            if (layout.pane_count() <= 2) {
+                // Fewer than two panes would be left, which is no split.
+                return {};
+            }
+            layout.remove_pane(placeholder);
+            continue;
+        }
+        found.insert(*pane);
+        layout.replace_pane(placeholder, *pane);
+        if (saved_ids[index] == *saved_focus)
+            focused_pane = *pane;
+    }
+    if (layout.pane_count() < 2)
+        return {};
+    layout.m_focused = focused_pane.value_or(first_pane(*layout.m_root));
+    return layout;
 }
 
 }
