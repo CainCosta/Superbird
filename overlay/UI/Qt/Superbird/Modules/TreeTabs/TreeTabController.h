@@ -112,7 +112,6 @@ private:
     void reconcile_model_with_window();
     void schedule_persist();
     void persist_now();
-    bool confirm_close_multiple_tabs(size_t count);
     void close_tab_list_safely(Vector<Tab*> const& tabs_to_close);
     void transfer_subtree_topology(BrowserWindow& target_window, Vector<Tab*> const& moved_tabs, HashMap<Tab const*, Tab*> const& parent_map, HashMap<Tab const*, bool> const& collapsed_map);
 

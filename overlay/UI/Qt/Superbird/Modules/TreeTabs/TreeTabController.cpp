@@ -14,6 +14,7 @@
 #include <UI/Qt/StringUtils.h>
 #include <UI/Qt/Tab.h>
 #include <UI/Qt/TabBar.h>
+#include <UI/Qt/Superbird/Core/Confirm.h>
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
 #include <UI/Qt/Superbird/Core/WindowHost.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabController.h>
@@ -23,7 +24,6 @@
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabsModule.h>
 
 #include <QMenu>
-#include <QMessageBox>
 #include <QTimer>
 
 namespace Ladybird {
@@ -352,16 +352,6 @@ void TreeTabController::new_child_tab(Tab& parent_tab)
     new_tab.focus_location_editor();
 }
 
-bool TreeTabController::confirm_close_multiple_tabs(size_t count)
-{
-    auto answer = QMessageBox::question(
-        &m_window,
-        "Close Branch",
-        qformatted("Close {} tabs in this collapsed branch?", count),
-        QMessageBox::Yes | QMessageBox::Cancel,
-        QMessageBox::Cancel);
-    return answer == QMessageBox::Yes;
-}
 
 void TreeTabController::request_close_tab(Tab& tab)
 {
@@ -389,8 +379,16 @@ void TreeTabController::close_branch(Tab& root_tab)
 
     auto tabs = m_model.subtree_tabs(*node_id);
     if (tabs.size() > 1 && is_collapsed(root_tab)) {
-        if (!confirm_close_multiple_tabs(tabs.size()))
-            return;
+        // The branch is folded, so the tabs it holds aren't in view: ask first. The branch is looked up again once the
+        // user answers, as tabs may have come and gone meanwhile.
+        Superbird::ask_to_confirm(m_window, qformatted("Close {} tabs?", tabs.size()), "They're in this collapsed branch, out of view.", "Close Tabs",
+            [this, root = QPointer(&root_tab)] {
+                if (!root)
+                    return;
+                if (auto id = m_model.node_id_for_tab(root.data()); id.has_value())
+                    close_tab_list_safely(m_model.subtree_tabs(*id));
+            });
+        return;
     }
 
     close_tab_list_safely(tabs);
