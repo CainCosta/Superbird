@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Superbird <superbird@local>
+Date: Tue, 24 Nov 2026 22:49:31 -0600
+Subject: [PATCH] UI: Install the shared libraries before copying them into the
+ macOS bundle
+
+
+diff --git a/UI/cmake/InstallRules.cmake b/UI/cmake/InstallRules.cmake
+index 904f743b..11ffbb77 100644
+--- a/UI/cmake/InstallRules.cmake
++++ b/UI/cmake/InstallRules.cmake
+@@ -70,6 +70,22 @@ list(REMOVE_DUPLICATES all_required_lagom_libraries)
+ # Remove ladybird shlib if it exists
+ list(REMOVE_ITEM all_required_lagom_libraries ladybird)
+ 
++install(TARGETS ${all_required_lagom_libraries}
++  EXPORT ladybirdTargets
++  ${vcpkg_runtime_dependencies}
++  COMPONENT ladybird_Runtime
++  LIBRARY
++    COMPONENT ladybird_Runtime
++    NAMELINK_COMPONENT ladybird_Development
++    DESTINATION ${CMAKE_INSTALL_LIBDIR}
++  FILE_SET server
++    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
++  FILE_SET ladybird
++    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
++)
++
++# NB: Install rules run in the order they're declared, so the bundle fixup, which copies the installed shared libraries
++#     into the bundle, has to come after the rule that installs them. (Superbird)
+ if (APPLE)
+     # Fixup the app bundle and copy:
+     #   - Shared libraries from lib/ to Ladybird.app/Contents/lib
+@@ -100,20 +116,6 @@ if (APPLE)
+         RENAME Ladybird.release.entitlements COMPONENT ladybird_Runtime)
+ endif()
+ 
+-install(TARGETS ${all_required_lagom_libraries}
+-  EXPORT ladybirdTargets
+-  ${vcpkg_runtime_dependencies}
+-  COMPONENT ladybird_Runtime
+-  LIBRARY
+-    COMPONENT ladybird_Runtime
+-    NAMELINK_COMPONENT ladybird_Development
+-    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+-  FILE_SET server
+-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+-  FILE_SET ladybird
+-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+-)
+-
+ if (vcpkg_runtime_dependencies)
+     set(vcpkg_library_install_dir ${CMAKE_INSTALL_LIBDIR})
+     set(qt_plugins "")

@@ -26,8 +26,13 @@ After that, `make run` is incremental (seconds to a few minutes, depending on wh
 ```sh
 make run            # rebuild what changed + launch Superbird
 make test           # fast unit tests + settings JS syntax check (seconds)
+make install        # self-contained Superbird.app into /Applications (quit Superbird first)
 git add -A && git commit -m "..." && git push
 ```
+
+`make install` builds, installs the runtime into a staging prefix, makes the bundle portable and re-signs it
+(`scripts/macos-bundle.py`, which CI uses too, and which fails if any library the app loads is missing), then replaces
+`/Applications/Superbird.app` (`SUPERBIRD_INSTALL_DIR` to change; `SUPERBIRD_NO_BUILD=1` to skip the build).
 
 Builds go to `upstream/Build/<preset>/` (default `Release`; `make run PRESET=Debug` for a debug build).
 The app bundle is at `upstream/Build/release/bin/Superbird.app`.
