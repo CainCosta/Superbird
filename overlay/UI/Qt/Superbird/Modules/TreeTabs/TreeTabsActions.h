@@ -28,6 +28,7 @@ enum class TreeTabsCommand : u8 {
     CloseBranch,
     IndentTab,
     OutdentTab,
+    FocusFilter,
 };
 
 struct TreeTabsActionDefinition {
@@ -38,7 +39,7 @@ struct TreeTabsActionDefinition {
 
 inline constexpr StringView TREE_TABS_ACTION_CATEGORY = "Tree Tabs"sv;
 
-inline constexpr Array<TreeTabsActionDefinition, 9> TREE_TABS_ACTIONS { {
+inline constexpr Array<TreeTabsActionDefinition, 10> TREE_TABS_ACTIONS { {
     { TreeTabsCommand::ToggleMode, "tree_tabs.toggle_mode"sv, "Toggle Tree-Style Tabs"sv },
     { TreeTabsCommand::NewChildTab, "tree_tabs.new_child_tab"sv, "New Child Tab"sv },
     { TreeTabsCommand::ToggleBranch, "tree_tabs.toggle_branch"sv, "Collapse / Expand Current Branch"sv },
@@ -48,6 +49,7 @@ inline constexpr Array<TreeTabsActionDefinition, 9> TREE_TABS_ACTIONS { {
     { TreeTabsCommand::CloseBranch, "tree_tabs.close_branch"sv, "Close Current Branch"sv },
     { TreeTabsCommand::IndentTab, "tree_tabs.indent_tab"sv, "Indent Current Tab"sv },
     { TreeTabsCommand::OutdentTab, "tree_tabs.outdent_tab"sv, "Outdent Current Tab"sv },
+    { TreeTabsCommand::FocusFilter, "tree_tabs.filter"sv, "Filter Tabs in Sidebar"sv },
 } };
 
 // Executes Tree-Style Tabs commands against whatever window is currently active.

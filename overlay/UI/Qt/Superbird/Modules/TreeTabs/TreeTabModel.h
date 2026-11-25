@@ -29,6 +29,23 @@ enum class TreeDropPosition : u8 {
     Below,
 };
 
+// A subtle color tag on a branch: a tab's tag colors its whole subtree, unless a descendant has a tag of its own.
+// Stored in TreeTabs.db as its integer value, so values only ever get added.
+enum class BranchColor : u8 {
+    None = 0,
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Teal,
+    Blue,
+    Purple,
+    Pink,
+};
+inline constexpr u8 BRANCH_COLOR_COUNT = 9;
+// A stored value from a newer or corrupt database reads as no color.
+BranchColor branch_color_from_storage(i64);
+
 struct TreeNode {
     TreeNodeId id { 0 };
     Tab* tab { nullptr };
@@ -36,6 +53,7 @@ struct TreeNode {
     Optional<TreeNodeId> parent_id;
     Vector<TreeNodeId> children;
     bool collapsed { false };
+    BranchColor color { BranchColor::None };
 };
 
 struct VisibleTreeRow {
@@ -53,12 +71,15 @@ struct VisibleTreeRow {
     bool has_active_descendant { false };
     bool has_audio_descendant { false };
     bool has_attention_descendant { false };
+    // The branch color the row shows (its own tag, or its nearest tagged ancestor's).
+    BranchColor color { BranchColor::None };
 };
 
 struct PersistedTreeNodeState {
     SessionTabId session_tab_id { 0 };
     Optional<SessionTabId> parent_session_tab_id;
     bool collapsed { false };
+    BranchColor color { BranchColor::None };
 };
 
 // Pure tree topology and selection model for unpinned tabs in one BrowserWindow.
@@ -96,6 +117,14 @@ public:
         Tab const* active_tab,
         Function<bool(Tab const&)> const& has_audio = {},
         Function<bool(Tab const&)> const& needs_attention = {}) const;
+
+    // The rows to show while the sidebar's quick filter is on: every tab that matches, under its ancestors for context.
+    // Branches open up to show their matches, whatever their collapsed state.
+    Vector<VisibleTreeRow> filtered_rows(Function<bool(Tab const&)> const& matches) const;
+
+    bool set_branch_color(TreeNodeId node_id, BranchColor color);
+    BranchColor branch_color(TreeNodeId node_id) const;
+    BranchColor effective_branch_color(TreeNodeId node_id) const;
 
     bool set_collapsed(TreeNodeId node_id, bool collapsed, bool auto_collapse_siblings = false);
     bool toggle_collapsed(TreeNodeId node_id, bool auto_collapse_siblings = false);
@@ -141,6 +170,14 @@ private:
         Tab const* active_tab,
         Function<bool(Tab const&)> const& has_audio,
         Function<bool(Tab const&)> const& needs_attention,
+        Vector<VisibleTreeRow>& out) const;
+    bool collect_filter_matches(TreeNodeId node_id, Function<bool(Tab const&)> const& matches, HashTable<TreeNodeId>& included) const;
+    void append_filtered_rows(
+        TreeNodeId node_id,
+        size_t depth,
+        u32 guide_mask,
+        bool is_last_sibling,
+        HashTable<TreeNodeId> const& included,
         Vector<VisibleTreeRow>& out) const;
     void collect_descendant_indicators(
         TreeNodeId node_id,

@@ -44,20 +44,29 @@ ErrorOr<NonnullOwnPtr<TreeTabStore>> TreeTabStore::create(ByteString const& data
             )#",
             .backfill = {},
         },
+        {
+            // Superbird M6: branch color tags. Additive only; old rows read as untagged.
+            .version = 2,
+            .sql = R"#(
+                ALTER TABLE TreeTabNodes ADD COLUMN color INTEGER NOT NULL DEFAULT 0;
+            )#",
+            .backfill = {},
+        },
     });
 
     if (TRY(database->migrate(TREE_TAB_STORE_NAME, migrations)) != Database::MigrationOutcome::Success)
         return Error::from_string_literal("TreeTabs database was created by a newer Superbird version");
 
     Statements statements {};
-    statements.select_all = TRY(database->prepare_statement("SELECT session_tab_id, parent_session_tab_id, collapsed FROM TreeTabNodes;"sv));
+    statements.select_all = TRY(database->prepare_statement("SELECT session_tab_id, parent_session_tab_id, collapsed, color FROM TreeTabNodes;"sv));
     statements.upsert_node = TRY(database->prepare_statement(
-        "INSERT INTO TreeTabNodes (session_tab_id, session_window_id, parent_session_tab_id, collapsed) "
-        "VALUES (:session_tab_id, :session_window_id, :parent_session_tab_id, :collapsed) "
+        "INSERT INTO TreeTabNodes (session_tab_id, session_window_id, parent_session_tab_id, collapsed, color) "
+        "VALUES (:session_tab_id, :session_window_id, :parent_session_tab_id, :collapsed, :color) "
         "ON CONFLICT(session_tab_id) DO UPDATE SET "
         "session_window_id = excluded.session_window_id, "
         "parent_session_tab_id = excluded.parent_session_tab_id, "
-        "collapsed = excluded.collapsed;"sv));
+        "collapsed = excluded.collapsed, "
+        "color = excluded.color;"sv));
     statements.delete_tab = TRY(database->prepare_statement("DELETE FROM TreeTabNodes WHERE session_tab_id = :session_tab_id;"sv));
     statements.delete_window = TRY(database->prepare_statement("DELETE FROM TreeTabNodes WHERE session_window_id = :session_window_id;"sv));
 
@@ -77,11 +86,13 @@ HashMap<SessionTabId, PersistedTreeNodeState> TreeTabStore::load_all() const
             auto session_tab_id = TRY(row.read_integer<i64>("session_tab_id"sv));
             auto parent_session_tab_id = TRY(row.read_optional_integer<i64>("parent_session_tab_id"sv));
             auto collapsed = TRY(row.read_bool("collapsed"sv));
+            auto color = branch_color_from_storage(TRY(row.read_integer<i64>("color"sv)));
 
             result.set(session_tab_id, PersistedTreeNodeState {
                 .session_tab_id = session_tab_id,
                 .parent_session_tab_id = parent_session_tab_id,
                 .collapsed = collapsed,
+                .color = color,
             });
             return {};
         });
@@ -106,6 +117,7 @@ void TreeTabStore::sync_window_nodes(SessionWindowId window_id, ReadonlySpan<Per
                 TRY(bind("session_window_id"sv, window_id));
                 TRY(bind("parent_session_tab_id"sv, node.parent_session_tab_id));
                 TRY(bind("collapsed"sv, i64 { node.collapsed ? 1 : 0 }));
+                TRY(bind("color"sv, static_cast<i64>(node.color)));
                 return {};
             }));
         }

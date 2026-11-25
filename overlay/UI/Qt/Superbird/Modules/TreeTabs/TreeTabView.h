@@ -12,11 +12,13 @@
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabModel.h>
 
 #include <QAbstractScrollArea>
+#include <QColor>
 #include <QPoint>
 #include <QPointer>
 #include <QRect>
 
 class QContextMenuEvent;
+class QLineEdit;
 class QKeyEvent;
 class QMouseEvent;
 class QPaintEvent;
@@ -28,6 +30,9 @@ namespace Ladybird {
 
 class Tab;
 class TreeTabController;
+
+// The color a branch tag is drawn in (an invalid color for no tag).
+QColor branch_color_to_qcolor(BranchColor);
 
 // Native Qt6 tree-style sidebar widget styled directly with Ladybird::Theme and ChromeStyle.
 class TreeTabView final : public QAbstractScrollArea {
@@ -43,6 +48,7 @@ public:
     void update_chrome_style();
     void set_collapsed_rail(bool collapsed_rail);
     void ensure_tab_visible(Tab const* tab);
+    void focus_filter();
 
     virtual QSize sizeHint() const override;
     virtual QSize minimumSizeHint() const override;
@@ -98,7 +104,11 @@ private:
     void paint_tree_row(QPainter&, int row_index, QRect const& row_rect, QPalette const&);
     void paint_drop_indicator(QPainter&, int pinned_height);
 
+    virtual bool eventFilter(QObject*, QEvent*) override;
+    void update_filter_bar();
+
     TreeTabController& m_controller;
+    QLineEdit* m_filter_field { nullptr };
     Vector<VisibleTreeRow> m_rows;
     bool m_collapsed_rail { false };
 

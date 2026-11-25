@@ -95,6 +95,15 @@ public:
 
     void refresh_view();
 
+    // The sidebar's quick filter: while it has text, the tree shows only matching tabs (with their ancestors).
+    void set_filter_text(QString const&);
+    QString const& filter_text() const { return m_filter_text; }
+    void focus_filter();
+
+    // Branch color tags, persisted in TreeTabs.db.
+    BranchColor branch_color(Tab const&) const;
+    void set_branch_color(Tab&, BranchColor);
+
     // Tabs this says are hidden (another workspace's, say) don't appear in the tree.
     void set_tab_hidden_predicate(Function<bool(Tab&)> predicate) { m_is_tab_hidden = move(predicate); }
 
@@ -112,6 +121,7 @@ private:
     QPointer<TreeTabView> m_view;
     QPointer<Tab> m_pending_opener;
     Function<bool(Tab&)> m_is_tab_hidden;
+    QString m_filter_text;
     QTimer* m_persist_timer { nullptr };
 
     bool m_syncing_flat_order { false };

@@ -135,6 +135,8 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 
 ### M6 — Tree-Style Tabs Polish *(Already Shipped in v0)*
 *Inspired by Sidebery & Tree Style Tab.*
+
+> **Status: ✅ Shipped (M6).** Overlay only, no patches. A quick-filter field tops the tree sidebar (matches by title/URL words, shown under their ancestors with branches opened; Esc clears, Enter opens the first match; "Filter Tabs in Sidebar" on the bus), and branch color tags (tab menu → Branch Color) draw a slim leading bar that a whole subtree inherits. Tags persist through an additive `TreeTabs.db` v2 migration (`color` column). Design: `docs/design/M6-tree-tabs-polish.md`.
 - **Already shipped:** Nested tab trees in the vertical sidebar, collapse/expand with count badge, 3-zone drag-and-drop, orphan close policies, multi-select, branch context actions, sidecar SQLite persistence.
 - **Wave 1 polish (overlay-only):**
   - Inline quick-filter box at the top of the tree sidebar (filter open tabs by title/URL without leaving the sidebar).
@@ -152,7 +154,7 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 | **M3** ✅ | Workspaces (Spaces) + `Workspaces.db` + sidebar/toolbar switcher | Small (`TabWidget` / `TreeTabView` filter seam) | Workspace model unit tests + works with both Tree Tabs and regular tabs |
 | **M4** ✅ | Split View (2-pane / grid tab tiling) | Small (`TabWidget` page host seam) | Split layout unit tests + focus/close/resize stability |
 | **M5** ✅ | Glance (Quick Peek floating sheet + promote to tab) | Tiny (link modifier / context menu hook) | Glance lifecycle tests + promotes cleanly into Tree Tabs |
-| **M6** | Tree-Style Tabs Wave 1 polish (sidebar filter box + branch color tags) | None (overlay-only!) | TreeTabModel unit tests |
+| **M6** ✅ | Tree-Style Tabs Wave 1 polish (sidebar filter box + branch color tags) | None (overlay-only!) | TreeTabModel unit tests |
 
 ---
 

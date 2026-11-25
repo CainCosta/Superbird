@@ -60,7 +60,7 @@ static void test_action_table_is_well_formed()
         EXPECT(commands.set(static_cast<u8>(definition.command)) == HashSetResult::InsertedNewEntry);
     }
     // Every command has exactly one action, including the branch actions the roadmap requires.
-    EXPECT(commands.size() == static_cast<size_t>(TreeTabsCommand::OutdentTab) + 1);
+    EXPECT(commands.size() == static_cast<size_t>(TreeTabsCommand::FocusFilter) + 1);
     for (auto id : { "tree_tabs.toggle_branch"sv, "tree_tabs.new_child_tab"sv, "tree_tabs.unload_branch"sv, "tree_tabs.close_branch"sv, "tree_tabs.move_branch_to_new_window"sv })
         EXPECT(ids.contains(id));
 }

@@ -262,6 +262,7 @@ void TreeTabModel::append_visible_rows(
         .has_active_descendant = has_active_desc,
         .has_audio_descendant = has_audio_desc,
         .has_attention_descendant = has_attention_desc,
+        .color = effective_branch_color(node_id),
     });
 
     if (effective_collapsed)
@@ -551,6 +552,107 @@ void TreeTabModel::remove_node(TreeNodeId node_id, WebView::TreeTabCloseBehavior
     }
 }
 
+BranchColor branch_color_from_storage(i64 value)
+{
+    if (value <= 0 || value >= BRANCH_COLOR_COUNT)
+        return BranchColor::None;
+    return static_cast<BranchColor>(value);
+}
+
+bool TreeTabModel::set_branch_color(TreeNodeId node_id, BranchColor color)
+{
+    auto* entry = mutable_node(node_id);
+    if (!entry || entry->color == color)
+        return false;
+    entry->color = color;
+    return true;
+}
+
+BranchColor TreeTabModel::branch_color(TreeNodeId node_id) const
+{
+    auto const* entry = node(node_id);
+    return entry ? entry->color : BranchColor::None;
+}
+
+BranchColor TreeTabModel::effective_branch_color(TreeNodeId node_id) const
+{
+    for (auto const* entry = node(node_id); entry; entry = entry->parent_id.has_value() ? node(*entry->parent_id) : nullptr) {
+        if (entry->color != BranchColor::None)
+            return entry->color;
+    }
+    return BranchColor::None;
+}
+
+bool TreeTabModel::collect_filter_matches(TreeNodeId node_id, Function<bool(Tab const&)> const& matches, HashTable<TreeNodeId>& included) const
+{
+    auto const* entry = node(node_id);
+    if (!entry)
+        return false;
+    bool any = entry->tab && matches(*entry->tab);
+    for (auto child : entry->children) {
+        if (collect_filter_matches(child, matches, included))
+            any = true;
+    }
+    if (any)
+        included.set(node_id);
+    return any;
+}
+
+void TreeTabModel::append_filtered_rows(
+    TreeNodeId node_id,
+    size_t depth,
+    u32 guide_mask,
+    bool is_last_sibling,
+    HashTable<TreeNodeId> const& included,
+    Vector<VisibleTreeRow>& out) const
+{
+    auto const* entry = node(node_id);
+    if (!entry)
+        return;
+
+    Vector<TreeNodeId> shown_children;
+    for (auto child : entry->children) {
+        if (included.contains(child))
+            shown_children.append(child);
+    }
+
+    out.append(VisibleTreeRow {
+        .node_id = node_id,
+        .tab = entry->tab,
+        .depth = depth,
+        .has_children = !shown_children.is_empty(),
+        .collapsed = false,
+        .descendant_count = 0,
+        .is_selected = m_selected_nodes.contains(node_id),
+        .is_last_sibling = is_last_sibling,
+        .guide_mask = guide_mask,
+        .has_active_descendant = false,
+        .has_audio_descendant = false,
+        .has_attention_descendant = false,
+        .color = effective_branch_color(node_id),
+    });
+
+    u32 child_guide_mask = guide_mask;
+    if (depth < 31 && !is_last_sibling)
+        child_guide_mask |= (1u << depth);
+    for (size_t i = 0; i < shown_children.size(); ++i)
+        append_filtered_rows(shown_children[i], depth + 1, child_guide_mask, i + 1 == shown_children.size(), included, out);
+}
+
+Vector<VisibleTreeRow> TreeTabModel::filtered_rows(Function<bool(Tab const&)> const& matches) const
+{
+    HashTable<TreeNodeId> included;
+    Vector<TreeNodeId> shown_roots;
+    for (auto root : m_roots) {
+        if (collect_filter_matches(root, matches, included))
+            shown_roots.append(root);
+    }
+    Vector<VisibleTreeRow> rows;
+    for (size_t i = 0; i < shown_roots.size(); ++i)
+        append_filtered_rows(shown_roots[i], 0, 0, i + 1 == shown_roots.size(), included, rows);
+    return rows;
+}
+
 void TreeTabModel::apply_persisted_state(HashMap<SessionTabId, PersistedTreeNodeState> const& persisted_by_tab)
 {
     if (persisted_by_tab.is_empty() || m_nodes.is_empty())
@@ -588,6 +690,7 @@ void TreeTabModel::apply_persisted_state(HashMap<SessionTabId, PersistedTreeNode
         if (entry->session_tab_id.has_value()) {
             if (auto saved = persisted_by_tab.get(*entry->session_tab_id); saved.has_value()) {
                 restored_collapsed = saved->collapsed;
+                entry->color = saved->color;
                 if (saved->parent_session_tab_id.has_value()) {
                     if (auto parent_node = session_to_node.get(*saved->parent_session_tab_id); parent_node.has_value() && *parent_node != id && !is_ancestor(id, *parent_node))
                         restored_parent = *parent_node;
@@ -624,6 +727,7 @@ Vector<PersistedTreeNodeState> TreeTabModel::snapshot_persisted_state() const
             .session_tab_id = *entry.session_tab_id,
             .parent_session_tab_id = parent_session_id,
             .collapsed = entry.collapsed && !entry.children.is_empty(),
+            .color = entry.color,
         });
     }
     return state;

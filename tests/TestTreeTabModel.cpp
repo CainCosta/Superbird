@@ -6,6 +6,8 @@
 
 #include <cstdio>
 #include <AK/Vector.h>
+#include <AK/HashMap.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabFilter.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabModel.h>
 
 #include <cstdlib>
@@ -242,6 +244,105 @@ static void test_multi_selection()
     EXPECT(model.selected_count() == 2);
 }
 
+static void test_branch_color_tags_and_persistence()
+{
+    Tab t1(1), t2(2), t3(3), t4(4);
+    TreeTabModel model;
+    auto n1 = model.add_tab(&t1, 201);
+    auto n2 = model.add_tab(&t2, 202, n1);
+    auto n3 = model.add_tab(&t3, 203, n2);
+    auto n4 = model.add_tab(&t4, 204);
+
+    EXPECT(model.effective_branch_color(n3) == BranchColor::None);
+    EXPECT(model.set_branch_color(n1, BranchColor::Blue));
+    EXPECT(!model.set_branch_color(n1, BranchColor::Blue));
+    EXPECT(!model.set_branch_color(9999, BranchColor::Red));
+    // A tag colors the whole branch...
+    EXPECT(model.effective_branch_color(n2) == BranchColor::Blue && model.effective_branch_color(n3) == BranchColor::Blue);
+    EXPECT(model.branch_color(n2) == BranchColor::None);
+    // ...unless a descendant has its own.
+    EXPECT(model.set_branch_color(n2, BranchColor::Green));
+    EXPECT(model.effective_branch_color(n3) == BranchColor::Green);
+    EXPECT(model.effective_branch_color(n4) == BranchColor::None);
+
+    auto rows = model.visible_rows(nullptr);
+    EXPECT(rows.size() == 4);
+    EXPECT(rows[0].color == BranchColor::Blue && rows[1].color == BranchColor::Green && rows[2].color == BranchColor::Green && rows[3].color == BranchColor::None);
+
+    // Tags survive the TreeTabs.db round trip, and stored values decode defensively.
+    auto snapshot = model.snapshot_persisted_state();
+    HashMap<SessionTabId, PersistedTreeNodeState> saved;
+    for (auto const& state : snapshot)
+        saved.set(state.session_tab_id, state);
+    EXPECT(saved.get(201)->color == BranchColor::Blue);
+    EXPECT(saved.get(202)->color == BranchColor::Green);
+    EXPECT(saved.get(204)->color == BranchColor::None);
+
+    TreeTabModel restored;
+    auto r1 = restored.add_tab(&t1, 201);
+    auto r2 = restored.add_tab(&t2, 202);
+    auto r3 = restored.add_tab(&t3, 203);
+    restored.add_tab(&t4, 204);
+    restored.apply_persisted_state(saved);
+    EXPECT(restored.branch_color(r1) == BranchColor::Blue);
+    EXPECT(restored.branch_color(r2) == BranchColor::Green);
+    EXPECT(restored.effective_branch_color(r3) == BranchColor::Green);
+
+    EXPECT(branch_color_from_storage(0) == BranchColor::None);
+    EXPECT(branch_color_from_storage(static_cast<i64>(BranchColor::Pink)) == BranchColor::Pink);
+    EXPECT(branch_color_from_storage(BRANCH_COLOR_COUNT) == BranchColor::None);
+    EXPECT(branch_color_from_storage(-3) == BranchColor::None);
+
+    // Replacing a tab (discarding it) keeps its tag.
+    Tab t2b(22);
+    model.replace_tab(&t2, &t2b);
+    EXPECT(model.branch_color(*model.node_id_for_tab(&t2b)) == BranchColor::Green);
+}
+
+static void test_filtered_rows_show_matches_with_context()
+{
+    Tab t1(1), t2(2), t3(3), t4(4), t5(5);
+    TreeTabModel model;
+    auto n1 = model.add_tab(&t1, 301);
+    auto n2 = model.add_tab(&t2, 302, n1);
+    model.add_tab(&t3, 303, n2);
+    model.add_tab(&t4, 304, n1);
+    model.add_tab(&t5, 305);
+    model.set_collapsed(n1, true);
+
+    // Collapsed branches open up to show a deep match, with its ancestors.
+    auto rows = model.filtered_rows([](Tab const& tab) { return tab.id == 3; });
+    auto ids = row_ids_of(rows);
+    EXPECT(ids.size() == 3 && ids[0] == 1 && ids[1] == 2 && ids[2] == 3);
+    EXPECT(rows[0].depth == 0 && rows[1].depth == 1 && rows[2].depth == 2);
+    EXPECT(!rows[0].collapsed && rows[0].has_children && !rows[2].has_children);
+    EXPECT(rows[2].is_last_sibling);
+
+    rows = model.filtered_rows([](Tab const& tab) { return tab.id == 4 || tab.id == 5; });
+    ids = row_ids_of(rows);
+    EXPECT(ids.size() == 3 && ids[0] == 1 && ids[1] == 4 && ids[2] == 5);
+    // Sibling 2 is filtered out, so 4 is the last shown child.
+    EXPECT(rows[1].is_last_sibling);
+
+    EXPECT(model.filtered_rows([](Tab const&) { return false; }).is_empty());
+    EXPECT(model.filtered_rows([](Tab const&) { return true; }).size() == 5);
+    // The filter doesn't change the stored collapsed state.
+    EXPECT(model.visible_rows(nullptr).size() == 2);
+}
+
+static void test_filter_text_matching()
+{
+    using Superbird::TreeTabs::tab_matches_filter;
+    EXPECT(tab_matches_filter("Ladybird Browser", "https://ladybird.org/", ""));
+    EXPECT(tab_matches_filter("Ladybird Browser", "https://ladybird.org/", "   "));
+    EXPECT(tab_matches_filter("Ladybird Browser", "https://ladybird.org/", "BROWSER"));
+    EXPECT(tab_matches_filter("Ladybird Browser", "https://ladybird.org/", "org"));
+    EXPECT(tab_matches_filter("Ladybird Browser", "https://ladybird.org/", "browser org"));
+    EXPECT(!tab_matches_filter("Ladybird Browser", "https://ladybird.org/", "browser github"));
+    EXPECT(!tab_matches_filter("", "", "x"));
+    EXPECT(tab_matches_filter("Caf\xC3\xA9", "", "caf\xC3\xA9"));
+}
+
 int main()
 {
     test_opener_nesting_and_linearization();
@@ -250,6 +351,9 @@ int main()
     test_close_orphan_policies();
     test_replace_tab_and_persistence_roundtrip();
     test_multi_selection();
+    test_branch_color_tags_and_persistence();
+    test_filtered_rows_show_matches_with_context();
+    test_filter_text_matching();
     std::printf("All TreeTabModel unit tests passed!\n");
     return 0;
 }

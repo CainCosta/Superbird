@@ -70,6 +70,7 @@ fi
 "$CXX" "${COMMON_FLAGS[@]}" \
     "$ROOT_DIR/tests/TestTreeTabModel.cpp" \
     "$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/TreeTabs/TreeTabModel.cpp" \
+    "$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/TreeTabs/TreeTabFilter.cpp" \
     "$TMP_DIR/ak_stubs.cpp" \
     -o "$TMP_DIR/test_tree_tab_model"
 "$TMP_DIR/test_tree_tab_model"

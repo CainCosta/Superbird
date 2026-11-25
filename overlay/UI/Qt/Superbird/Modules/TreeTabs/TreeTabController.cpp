@@ -17,6 +17,7 @@
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
 #include <UI/Qt/Superbird/Core/WindowHost.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabController.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabFilter.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabStore.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabView.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabsModule.h>
@@ -268,10 +269,21 @@ bool TreeTabController::tab_has_audio(Tab const& tab)
 
 Vector<VisibleTreeRow> TreeTabController::visible_rows() const
 {
-    auto rows = m_model.visible_rows(
-        m_window.current_tab(),
-        [](Tab const& tab) { return tab_has_audio(tab); },
-        [](Tab const& tab) { return tab.needs_attention(); });
+    Vector<VisibleTreeRow> rows;
+    if (auto query = m_filter_text.trimmed(); !query.isEmpty()) {
+        auto query_utf8 = query.toUtf8();
+        std::string_view query_view { query_utf8.constData(), static_cast<size_t>(query_utf8.size()) };
+        rows = m_model.filtered_rows([&](Tab const& tab) {
+            auto title = tab.title().toUtf8();
+            auto url = tab.url().to_byte_string();
+            return Superbird::TreeTabs::tab_matches_filter({ title.constData(), static_cast<size_t>(title.size()) }, { url.characters(), url.length() }, query_view);
+        });
+    } else {
+        rows = m_model.visible_rows(
+            m_window.current_tab(),
+            [](Tab const& tab) { return tab_has_audio(tab); },
+            [](Tab const& tab) { return tab.needs_attention(); });
+    }
     // Tabs another module keeps out of view (another workspace's) leave the tree too.
     if (m_is_tab_hidden)
         rows.remove_all_matching([&](VisibleTreeRow const& row) { return row.tab && m_is_tab_hidden(*row.tab); });
@@ -791,6 +803,35 @@ void TreeTabController::refresh_view()
 {
     if (m_view)
         m_view->rebuild_rows();
+}
+
+void TreeTabController::set_filter_text(QString const& text)
+{
+    if (m_filter_text == text)
+        return;
+    m_filter_text = text;
+    refresh_view();
+}
+
+void TreeTabController::focus_filter()
+{
+    if (m_view)
+        m_view->focus_filter();
+}
+
+BranchColor TreeTabController::branch_color(Tab const& tab) const
+{
+    auto node_id = m_model.node_id_for_tab(&tab);
+    return node_id.has_value() ? m_model.branch_color(*node_id) : BranchColor::None;
+}
+
+void TreeTabController::set_branch_color(Tab& tab, BranchColor color)
+{
+    auto node_id = m_model.node_id_for_tab(&tab);
+    if (!node_id.has_value() || !m_model.set_branch_color(*node_id, color))
+        return;
+    schedule_persist();
+    refresh_view();
 }
 
 }

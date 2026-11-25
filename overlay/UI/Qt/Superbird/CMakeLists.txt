@@ -13,6 +13,8 @@ if (SUPERBIRD_MODULE_TREE_TABS)
     target_sources(ladybird_impl PRIVATE
         Superbird/Modules/TreeTabs/TreeTabController.cpp
         Superbird/Modules/TreeTabs/TreeTabController.h
+        Superbird/Modules/TreeTabs/TreeTabFilter.cpp
+        Superbird/Modules/TreeTabs/TreeTabFilter.h
         Superbird/Modules/TreeTabs/TreeTabModel.cpp
         Superbird/Modules/TreeTabs/TreeTabModel.h
         Superbird/Modules/TreeTabs/TreeTabStore.cpp

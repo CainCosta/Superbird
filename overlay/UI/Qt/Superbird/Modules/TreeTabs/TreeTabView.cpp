@@ -13,12 +13,14 @@
 #include <UI/Qt/Tab.h>
 #include <UI/Qt/Theme.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabController.h>
+#include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabFilter.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabView.h>
 
 #include <QApplication>
 #include <QContextMenuEvent>
 #include <QFontMetrics>
 #include <QKeyEvent>
+#include <QLineEdit>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -47,6 +49,33 @@ static constexpr int TREE_PINNED_COLUMNS = 4;
 static constexpr qreal TREE_UNLOADED_OPACITY = 0.5;
 static constexpr int TREE_DRAG_AUTO_EXPAND_MS = 400;
 static constexpr int TREE_DETACH_MARGIN_PX = 48;
+static constexpr int TREE_FILTER_BAR_HEIGHT = 34;
+static constexpr int TREE_COLOR_BAR_WIDTH = 3;
+
+QColor branch_color_to_qcolor(BranchColor color)
+{
+    switch (color) {
+    case BranchColor::None:
+        return {};
+    case BranchColor::Red:
+        return QColor(0xE5484D);
+    case BranchColor::Orange:
+        return QColor(0xF76B15);
+    case BranchColor::Yellow:
+        return QColor(0xE2A336);
+    case BranchColor::Green:
+        return QColor(0x30A46C);
+    case BranchColor::Teal:
+        return QColor(0x12A594);
+    case BranchColor::Blue:
+        return QColor(0x0090FF);
+    case BranchColor::Purple:
+        return QColor(0x8E4EC6);
+    case BranchColor::Pink:
+        return QColor(0xD6409F);
+    }
+    return {};
+}
 
 TreeTabView::TreeTabView(TreeTabController& controller, QWidget* parent)
     : QAbstractScrollArea(parent)
@@ -70,6 +99,18 @@ TreeTabView::TreeTabView(TreeTabController& controller, QWidget* parent)
             return;
         if (auto const* node = m_controller.model().node(*m_auto_expand_node_id); node && node->tab)
             m_controller.set_branch_collapsed(*node->tab, false);
+    });
+
+    // The quick filter sits above the tree, in the scroll area's top margin.
+    m_filter_field = new QLineEdit(this);
+    m_filter_field->setObjectName("SuperbirdTreeTabFilter");
+    m_filter_field->setPlaceholderText("Filter tabs");
+    m_filter_field->setAccessibleName("Filter tabs");
+    m_filter_field->setClearButtonEnabled(true);
+    m_filter_field->installEventFilter(this);
+    connect(m_filter_field, &QLineEdit::textChanged, this, [this](QString const& text) {
+        m_controller.set_filter_text(text);
+        verticalScrollBar()->setValue(0);
     });
 
     m_loading_repaint_timer = new QTimer(this);
@@ -98,7 +139,71 @@ void TreeTabView::update_chrome_style()
                   "QScrollBar:vertical { background: transparent; width: 6px; margin: 2px 1px 2px 0; }"
                   "QScrollBar::handle:vertical { background: rgba(128, 128, 128, 0.35); border-radius: 3px; min-height: 24px; }"
                   "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }");
+    if (m_filter_field) {
+        auto chrome_palette = Theme::chrome_palette(*this);
+        auto const& colors = Theme::chrome(chrome_palette);
+        m_filter_field->setStyleSheet(QString("QLineEdit#SuperbirdTreeTabFilter { background: %1; color: %2; border: 1px solid %3; border-radius: 6px; padding: 2px 6px; }"
+                                              "QLineEdit#SuperbirdTreeTabFilter:focus { border-color: %4; }")
+                                          .arg(ChromeStyle::style_sheet_color(colors.field), ChromeStyle::style_sheet_color(colors.text),
+                                              ChromeStyle::style_sheet_color(colors.field_edge.alpha() > 0 ? colors.field_edge : colors.separator),
+                                              ChromeStyle::style_sheet_color(Theme::focus_edge())));
+        for (auto* action : m_filter_field->actions())
+            m_filter_field->removeAction(action);
+        m_filter_field->addAction(create_chrome_icon(ChromeIcon::Search, colors.muted), QLineEdit::LeadingPosition);
+    }
+    update_filter_bar();
     viewport()->update();
+}
+
+void TreeTabView::update_filter_bar()
+{
+    if (!m_filter_field)
+        return;
+    // The collapsed rail has no room for a field; its filter is put aside until the sidebar opens again.
+    auto shown = !m_collapsed_rail;
+    m_filter_field->setVisible(shown);
+    setViewportMargins(0, shown ? TREE_FILTER_BAR_HEIGHT : 0, 0, 0);
+    if (shown)
+        m_filter_field->setGeometry(TREE_ROW_HORIZONTAL_INSET, 4, max(0, width() - (2 * TREE_ROW_HORIZONTAL_INSET)), TREE_FILTER_BAR_HEIGHT - 8);
+    if (!shown && !m_filter_field->text().isEmpty())
+        m_filter_field->clear();
+}
+
+void TreeTabView::focus_filter()
+{
+    if (!m_filter_field || !m_filter_field->isVisible())
+        return;
+    m_filter_field->setFocus(Qt::ShortcutFocusReason);
+    m_filter_field->selectAll();
+}
+
+bool TreeTabView::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == m_filter_field && event->type() == QEvent::KeyPress) {
+        auto key = static_cast<QKeyEvent*>(event)->key();
+        if (key == Qt::Key_Escape) {
+            m_filter_field->clear();
+            if (auto* tab = m_controller.window().current_tab(); tab && tab->is_loaded())
+                tab->view().setFocus(Qt::OtherFocusReason);
+            return true;
+        }
+        // Enter goes to the first tab the filter shows.
+        if (key == Qt::Key_Return || key == Qt::Key_Enter) {
+            auto query = m_filter_field->text().trimmed().toUtf8();
+            for (auto const& row : m_rows) {
+                if (!row.tab)
+                    continue;
+                auto title = row.tab->title().toUtf8();
+                auto url = row.tab->url().to_byte_string();
+                if (Superbird::TreeTabs::tab_matches_filter({ title.constData(), static_cast<size_t>(title.size()) }, { url.characters(), url.length() }, { query.constData(), static_cast<size_t>(query.size()) })) {
+                    m_controller.activate_tab(*row.tab);
+                    break;
+                }
+            }
+            return true;
+        }
+    }
+    return QAbstractScrollArea::eventFilter(watched, event);
 }
 
 void TreeTabView::set_collapsed_rail(bool collapsed_rail)
@@ -106,6 +211,7 @@ void TreeTabView::set_collapsed_rail(bool collapsed_rail)
     if (m_collapsed_rail == collapsed_rail)
         return;
     m_collapsed_rail = collapsed_rail;
+    update_filter_bar();
     update_scrollbars();
     viewport()->update();
 }
@@ -275,6 +381,7 @@ void TreeTabView::update_loading_timer()
 void TreeTabView::resizeEvent(QResizeEvent* event)
 {
     QAbstractScrollArea::resizeEvent(event);
+    update_filter_bar();
     update_scrollbars();
 }
 
@@ -370,6 +477,15 @@ void TreeTabView::paint_tree_row(QPainter& painter, int row_index, QRect const& 
         } else {
             painter.fillPath(path, colors.hover);
         }
+    }
+
+    // A branch color tag shows as a slim bar at the row's leading edge.
+    if (row.color != BranchColor::None) {
+        auto tag_color = branch_color_to_qcolor(row.color);
+        tag_color.setAlphaF(is_active ? 1.0 : 0.85);
+        QPainterPath tag_bar;
+        tag_bar.addRoundedRect(QRectF(row_rect.left() + 1, row_rect.top() + 4, TREE_COLOR_BAR_WIDTH, row_rect.height() - 8), 1.5, 1.5);
+        painter.fillPath(tag_bar, tag_color);
     }
 
     // Active descendant highlight bar on a collapsed parent

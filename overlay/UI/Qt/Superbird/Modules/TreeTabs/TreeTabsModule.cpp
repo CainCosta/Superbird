@@ -7,6 +7,7 @@
 #include <UI/Qt/Application.h>
 #include <UI/Qt/StringUtils.h>
 #include <UI/Qt/BrowserWindow.h>
+#include <UI/Qt/Icon.h>
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
 #include <UI/Qt/Superbird/Core/WindowHost.h>
 #include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabController.h>
@@ -167,6 +168,43 @@ void TreeTabsModule::attach_tab_context_menu(Ladybird::Tab& tab, QMenu& menu)
             m_controller->close_branch(*tab_ptr);
     });
 
+    // Branch color tags: a submenu of swatches, checked on the tab's own tag.
+    auto* color_menu = new QMenu("Branch Co&lor", &menu);
+    struct ColorName {
+        Ladybird::BranchColor color;
+        StringView name;
+    };
+    static constexpr ColorName color_names[] = {
+        { Ladybird::BranchColor::None, "None"sv },
+        { Ladybird::BranchColor::Red, "Red"sv },
+        { Ladybird::BranchColor::Orange, "Orange"sv },
+        { Ladybird::BranchColor::Yellow, "Yellow"sv },
+        { Ladybird::BranchColor::Green, "Green"sv },
+        { Ladybird::BranchColor::Teal, "Teal"sv },
+        { Ladybird::BranchColor::Blue, "Blue"sv },
+        { Ladybird::BranchColor::Purple, "Purple"sv },
+        { Ladybird::BranchColor::Pink, "Pink"sv },
+    };
+    for (auto const& [color, name] : color_names) {
+        QIcon swatch;
+        if (auto qcolor = Ladybird::branch_color_to_qcolor(color); qcolor.isValid())
+            swatch = Ladybird::create_chrome_icon(Ladybird::ChromeIcon::CheckCircle, qcolor);
+        auto* action = color_menu->addAction(swatch, qstring_from_ak_string(name));
+        action->setCheckable(true);
+        action->setData(static_cast<int>(color));
+        QObject::connect(action, &QAction::triggered, &tab, [this, tab_ptr = QPointer<Ladybird::Tab>(&tab), color] {
+            if (tab_ptr)
+                m_controller->set_branch_color(*tab_ptr, color);
+        });
+    }
+    QObject::connect(color_menu, &QMenu::aboutToShow, color_menu, [this, color_menu, tab_ptr = QPointer<Ladybird::Tab>(&tab)] {
+        if (!tab_ptr)
+            return;
+        auto current = static_cast<int>(m_controller->branch_color(*tab_ptr));
+        for (auto* action : color_menu->actions())
+            action->setChecked(action->data().toInt() == current);
+    });
+
     auto* branch_separator = menu.addSeparator();
     menu.addAction(new_child_tab_action);
     menu.addAction(toggle_branch_action);
@@ -174,6 +212,7 @@ void TreeTabsModule::attach_tab_context_menu(Ladybird::Tab& tab, QMenu& menu)
     menu.addAction(bookmark_branch_action);
     menu.addAction(move_branch_to_new_window_action);
     menu.addAction(close_branch_action);
+    menu.addMenu(color_menu);
 
     m_tab_menu_actions.set(&tab, TabMenuActions {
         .new_child_tab = new_child_tab_action,
@@ -183,6 +222,7 @@ void TreeTabsModule::attach_tab_context_menu(Ladybird::Tab& tab, QMenu& menu)
         .bookmark_branch = bookmark_branch_action,
         .move_branch_to_new_window = move_branch_to_new_window_action,
         .close_branch = close_branch_action,
+        .branch_color = color_menu->menuAction(),
     });
 
     QObject::connect(&tab, &QObject::destroyed, m_controller.ptr(), [this, raw_tab = &tab]() {
@@ -221,6 +261,8 @@ void TreeTabsModule::update_tab_context_menu(Ladybird::Tab& tab)
     }
     if (actions.close_branch)
         actions.close_branch->setVisible(has_branch);
+    if (actions.branch_color)
+        actions.branch_color->setVisible(show_tree_actions);
 }
 
 void TreeTabsModule::attach_window_tab_layout_menu(QMenu& tab_layout_menu)
@@ -308,6 +350,8 @@ public:
             return controller->has_unloadable_tabs_in_branch(*tab);
         case TreeTabsCommand::MoveBranchToNewWindow:
             return controller->has_children(*tab) && static_cast<int>(controller->descendant_count(*tab) + 1) < window->tab_count();
+        case TreeTabsCommand::FocusFilter:
+            return true;
         }
         VERIFY_NOT_REACHED();
     }
@@ -351,6 +395,9 @@ public:
             break;
         case TreeTabsCommand::OutdentTab:
             controller.outdent_tab(tab);
+            break;
+        case TreeTabsCommand::FocusFilter:
+            controller.focus_filter();
             break;
         }
     }

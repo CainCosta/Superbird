@@ -78,6 +78,7 @@ private:
         QPointer<QAction> bookmark_branch;
         QPointer<QAction> move_branch_to_new_window;
         QPointer<QAction> close_branch;
+        QPointer<QAction> branch_color;
     };
 
     void sync_sidebar_visibility();
