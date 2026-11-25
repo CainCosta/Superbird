@@ -47,6 +47,17 @@ struct ReaderPreferences {
     int line_height { 16 };
     ReaderWidth width { ReaderWidth::Medium };
     ReaderTheme theme { ReaderTheme::System };
+    // Text size changes apply as zoom steps on the reader's view, which keeps the reading position (a new document
+    // would start back at the top). Each step is one of the browser's zoom levels.
+    static constexpr int MAXIMUM_ZOOM_STEPS = 8;
+    int zoom_steps { 0 };
+
+    bool can_zoom_in() const { return zoom_steps < MAXIMUM_ZOOM_STEPS; }
+    bool can_zoom_out() const { return zoom_steps > -MAXIMUM_ZOOM_STEPS; }
+    // Moves the zoom by delta steps, within the limits. Returns how many steps it actually moved.
+    int zoom_by(int delta);
+    // Whether two preferences make the same reader document (they may differ in zoom alone).
+    bool makes_same_document_as(ReaderPreferences const&) const;
 
     bool can_decrease_font_size() const { return font_size > MINIMUM_FONT_SIZE; }
     bool can_increase_font_size() const { return font_size < MAXIMUM_FONT_SIZE; }

@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <AK/HashMap.h>
+#include <AK/String.h>
 #include <AK/Vector.h>
 #include <AK/kmalloc.h>
 #include <UI/Qt/Superbird/Core/Module.h>
@@ -63,7 +65,11 @@ private:
     void remove_shortcuts();
     void gather_base_entries();
     void update_results(QString const& query);
-    void activate(size_t row);
+    enum class OpenIn : u8 {
+        CurrentTab,
+        NewTab,
+    };
+    void activate(size_t row, OpenIn);
     void close_tab(size_t row);
     void navigate_current_tab(QString const& input);
 
@@ -79,6 +85,8 @@ private:
     std::vector<Palette::Entry> m_row_entries;
     Vector<Target> m_row_targets;
     QString m_calculator_result;
+    HashMap<String, QIcon> m_favicon_cache;
+    QPointer<QObject> m_shortcut_priority_filter;
 };
 
 }

@@ -45,9 +45,13 @@ public:
     void clear_query();
     QString query() const;
     void update_chrome_style(QPalette const&);
+    // Replaces the detail text of one row, e.g. to confirm that a result was copied.
+    void set_row_detail(size_t row, QString const&);
 
     Function<void(QString const&)> on_query_changed;
     Function<void(size_t)> on_activate;
+    // Cmd/Ctrl+Enter: open the row's page in a new tab instead.
+    Function<void(size_t)> on_activate_in_new_tab;
     Function<void(size_t)> on_close_requested;
 
 private:

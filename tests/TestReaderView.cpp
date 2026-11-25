@@ -297,6 +297,27 @@ static void test_sanitizes_scripts_frames_forms_and_handlers()
     EXPECT(has(out, "<img src=\"https://example.com/x.png\""));
 }
 
+static void test_srcset_and_picture_images()
+{
+    EXPECT(best_srcset_candidate("a.jpg 320w, b.jpg 1280w, c.jpg 640w").value() == "b.jpg");
+    EXPECT(best_srcset_candidate("a.jpg 1x, b.jpg 2x").value() == "b.jpg");
+    EXPECT(best_srcset_candidate("only.jpg").value() == "only.jpg");
+    EXPECT(best_srcset_candidate("first.jpg, second.jpg").value() == "first.jpg");
+    EXPECT(best_srcset_candidate("  x.jpg   400w  ,y.jpg 800w").value() == "y.jpg");
+    EXPECT(!best_srcset_candidate("").has_value());
+    EXPECT(!best_srcset_candidate(" , ").has_value());
+
+    auto article = extract_article(article_page({}, "<p>Pictures follow in this paragraph of reasonable length for the test.</p>"
+                                                    "<img srcset=\"/s.jpg 300w, /l.jpg 1200w\" alt=\"responsive\">"
+                                                    "<picture><source srcset=\"/p-small.webp 1x, /p-big.webp 2x\"><img alt=\"picture\"></picture>"
+                                                    "<img srcset=\"javascript:alert(1) 2x\" alt=\"evil\">"),
+        "https://example.com/a/");
+    EXPECT(has(article.content_html, "src=\"https://example.com/l.jpg\""));
+    EXPECT(has(article.content_html, "src=\"https://example.com/p-big.webp\""));
+    EXPECT(!has(lower(article.content_html), "javascript:"));
+    EXPECT(!has(article.content_html, "srcset"));
+}
+
 static void test_hidden_content_is_dropped()
 {
     auto article = extract_article(article_page({}, "<p hidden>Hidden one.</p><p aria-hidden=\"true\">Hidden two.</p><p style=\"display: none\">Hidden three.</p><div role=\"navigation\">Nav role.</div>"),
@@ -409,6 +430,17 @@ static void test_reader_preferences()
         ++steps;
     } while (cycling.line_height != start && steps < 20);
     EXPECT(steps == 6);
+
+    // Text size is zoom on the reader's view, so it doesn't make a new document (or lose the reading position).
+    ReaderPreferences zoomed;
+    EXPECT(zoomed.zoom_by(3) == 3);
+    EXPECT(zoomed.makes_same_document_as(ReaderPreferences {}));
+    EXPECT(zoomed.zoom_by(100) == ReaderPreferences::MAXIMUM_ZOOM_STEPS - 3);
+    EXPECT(!zoomed.can_zoom_in() && zoomed.zoom_by(1) == 0);
+    EXPECT(zoomed.zoom_by(-100) == -2 * ReaderPreferences::MAXIMUM_ZOOM_STEPS);
+    EXPECT(!zoomed.can_zoom_out());
+    zoomed.theme = ReaderTheme::Dark;
+    EXPECT(!zoomed.makes_same_document_as(ReaderPreferences {}));
 }
 
 int main()
@@ -424,6 +456,7 @@ int main()
     test_scoring_prefers_dense_prose_over_link_lists();
     test_relative_urls_resolve_against_base();
     test_sanitizes_scripts_frames_forms_and_handlers();
+    test_srcset_and_picture_images();
     test_hidden_content_is_dropped();
     test_non_article_detection();
     test_words_and_reading_time();

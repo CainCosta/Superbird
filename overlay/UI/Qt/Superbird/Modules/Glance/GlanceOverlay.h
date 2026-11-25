@@ -52,6 +52,8 @@ private:
     virtual void mousePressEvent(QMouseEvent*) override;
     virtual void keyPressEvent(QKeyEvent*) override;
     virtual void resizeEvent(QResizeEvent*) override;
+    virtual void showEvent(QShowEvent*) override;
+    virtual void hideEvent(QHideEvent*) override;
     virtual bool eventFilter(QObject*, QEvent*) override;
 
     void sync_geometry();
@@ -61,6 +63,8 @@ private:
     QFrame* m_sheet { nullptr };
     QLabel* m_title { nullptr };
     QLabel* m_host { nullptr };
+    QToolButton* m_back { nullptr };
+    QToolButton* m_reload { nullptr };
     QToolButton* m_open_as_tab { nullptr };
     QToolButton* m_copy_url { nullptr };
     QToolButton* m_close { nullptr };

@@ -181,6 +181,11 @@ bool TreeTabView::eventFilter(QObject* watched, QEvent* event)
 {
     if (watched == m_filter_field && event->type() == QEvent::KeyPress) {
         auto key = static_cast<QKeyEvent*>(event)->key();
+        // Down moves from the field into the tree, like a search field over a list.
+        if (key == Qt::Key_Down) {
+            setFocus(Qt::TabFocusReason);
+            return true;
+        }
         if (key == Qt::Key_Escape) {
             m_filter_field->clear();
             if (auto* tab = m_controller.window().current_tab(); tab && tab->is_loaded())
@@ -189,13 +194,13 @@ bool TreeTabView::eventFilter(QObject* watched, QEvent* event)
         }
         // Enter goes to the first tab the filter shows.
         if (key == Qt::Key_Return || key == Qt::Key_Enter) {
-            auto query = m_filter_field->text().trimmed().toUtf8();
+            auto query = m_filter_field->text().trimmed().toCaseFolded().toUtf8();
             for (auto const& row : m_rows) {
                 if (!row.tab)
                     continue;
-                auto title = row.tab->title().toUtf8();
-                auto url = row.tab->url().to_byte_string();
-                if (Superbird::TreeTabs::tab_matches_filter({ title.constData(), static_cast<size_t>(title.size()) }, { url.characters(), url.length() }, { query.constData(), static_cast<size_t>(query.size()) })) {
+                auto title = row.tab->title().toCaseFolded().toUtf8();
+                auto url = QString::fromUtf8(row.tab->url().to_byte_string().characters()).toCaseFolded().toUtf8();
+                if (Superbird::TreeTabs::tab_matches_filter({ title.constData(), static_cast<size_t>(title.size()) }, { url.constData(), static_cast<size_t>(url.size()) }, { query.constData(), static_cast<size_t>(query.size()) })) {
                     m_controller.activate_tab(*row.tab);
                     break;
                 }

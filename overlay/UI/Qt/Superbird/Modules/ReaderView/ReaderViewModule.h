@@ -84,6 +84,7 @@ private:
     TabState const* state_for(Ladybird::Tab*) const;
 
     void page_started_loading(TabState&);
+    void schedule_readerable_check(TabState&);
     void check_readerable(TabState&);
     void toggle(Ladybird::Tab&);
     void open_reader(TabState&);

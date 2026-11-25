@@ -18,6 +18,8 @@
 
 #include <QAction>
 #include <QMenu>
+#include <QPainter>
+#include <QPixmap>
 #include <QTimer>
 
 namespace Superbird {
@@ -187,8 +189,20 @@ void TreeTabsModule::attach_tab_context_menu(Ladybird::Tab& tab, QMenu& menu)
     };
     for (auto const& [color, name] : color_names) {
         QIcon swatch;
-        if (auto qcolor = Ladybird::branch_color_to_qcolor(color); qcolor.isValid())
-            swatch = Ladybird::create_chrome_icon(Ladybird::ChromeIcon::CheckCircle, qcolor);
+        if (auto qcolor = Ladybird::branch_color_to_qcolor(color); qcolor.isValid()) {
+            for (int scale = 1; scale <= 2; ++scale) {
+                QPixmap pixmap(14 * scale, 14 * scale);
+                pixmap.setDevicePixelRatio(scale);
+                pixmap.fill(Qt::transparent);
+                QPainter painter(&pixmap);
+                painter.setRenderHint(QPainter::Antialiasing);
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(qcolor);
+                painter.drawEllipse(QRectF(2, 2, 10, 10));
+                painter.end();
+                swatch.addPixmap(pixmap);
+            }
+        }
         auto* action = color_menu->addAction(swatch, qstring_from_ak_string(name));
         action->setCheckable(true);
         action->setData(static_cast<int>(color));

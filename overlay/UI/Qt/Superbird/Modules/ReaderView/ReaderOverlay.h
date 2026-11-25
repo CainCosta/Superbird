@@ -23,6 +23,7 @@ class QToolButton;
 
 namespace Ladybird {
 class BrowserWindow;
+class FindInPageWidget;
 class Tab;
 class WebContentView;
 }
@@ -58,9 +59,13 @@ private:
     void position_controls();
     void update_control_labels();
     void change(Function<void(Reader::ReaderPreferences&)> const&);
+    // Zooms the reader by delta steps (0 resets), keeping the reading position.
+    void zoom(int delta);
+    void apply_zoom_steps(int delta);
 
     QPointer<Ladybird::Tab> m_tab;
     Ladybird::WebContentView* m_view { nullptr };
+    QPointer<Ladybird::FindInPageWidget> m_find_in_page;
     QFrame* m_controls { nullptr };
     QToolButton* m_font_button { nullptr };
     QToolButton* m_smaller_button { nullptr };

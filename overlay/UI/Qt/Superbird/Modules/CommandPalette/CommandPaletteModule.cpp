@@ -25,6 +25,8 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QKeySequence>
+#include <QLineEdit>
+#include <QKeyEvent>
 #include <QScreen>
 #include <QShortcut>
 #include <QTimer>
@@ -116,10 +118,52 @@ CommandPaletteModule::~CommandPaletteModule()
     remove_shortcuts();
 }
 
+namespace {
+
+// Text fields claim some keys for editing (Ctrl+K deletes to the end of the line on Linux); in this window's fields the
+// palette's shortcuts win instead.
+class ShortcutPriorityFilter final : public QObject {
+public:
+    ShortcutPriorityFilter(QWidget& window, QObject* parent)
+        : QObject(parent)
+        , m_window(&window)
+    {
+    }
+
+private:
+    virtual bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (event->type() != QEvent::ShortcutOverride)
+            return false;
+        auto* field = qobject_cast<QLineEdit*>(watched);
+        if (!field || field->window() != m_window)
+            return false;
+        auto const& key_event = *static_cast<QKeyEvent*>(event);
+        auto modifiers = key_event.modifiers() & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+        QKeySequence pressed(QKeyCombination(modifiers, static_cast<Qt::Key>(key_event.key())));
+        for (auto const& sequence : palette_shortcuts()) {
+            if (sequence == pressed) {
+                // Not taken by the field, so the window's shortcut fires.
+                event->ignore();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    QPointer<QWidget> m_window;
+};
+
+}
+
 void CommandPaletteModule::install_shortcuts()
 {
     if (!m_shortcuts.is_empty())
         return;
+    if (!m_shortcut_priority_filter) {
+        m_shortcut_priority_filter = new ShortcutPriorityFilter(m_window, &m_window);
+        QApplication::instance()->installEventFilter(m_shortcut_priority_filter);
+    }
     for (auto const& sequence : palette_shortcuts()) {
         auto* shortcut = new QShortcut(sequence, &m_window);
         shortcut->setContext(Qt::WindowShortcut);
@@ -131,6 +175,10 @@ void CommandPaletteModule::install_shortcuts()
 
 void CommandPaletteModule::remove_shortcuts()
 {
+    if (m_shortcut_priority_filter) {
+        QApplication::instance()->removeEventFilter(m_shortcut_priority_filter);
+        delete m_shortcut_priority_filter.data();
+    }
     if (m_shortcuts.is_empty())
         return;
     for (auto const& sequence : palette_shortcuts())
@@ -175,7 +223,8 @@ void CommandPaletteModule::open()
     if (!m_popover) {
         m_popover = new CommandPalettePopover(&m_window);
         m_popover->on_query_changed = [this](QString const& query) { update_results(query); };
-        m_popover->on_activate = [this](size_t row) { activate(row); };
+        m_popover->on_activate = [this](size_t row) { activate(row, OpenIn::CurrentTab); };
+        m_popover->on_activate_in_new_tab = [this](size_t row) { activate(row, OpenIn::NewTab); };
         m_popover->on_close_requested = [this](size_t row) { close_tab(row); };
     }
 
@@ -252,8 +301,13 @@ void CommandPaletteModule::gather_base_entries()
             auto title = bookmark.title.has_value() ? to_std_string(*bookmark.title) : url_string;
             auto icon = bookmark_icon;
             if (bookmark.favicon_hash.has_value()) {
-                if (auto png = Ladybird::Application::bookmark_store().favicon_png(*bookmark.favicon_hash); png.has_value())
+                // Decoded once per favicon for the life of the window, not on every open.
+                if (auto cached = m_favicon_cache.get(*bookmark.favicon_hash); cached.has_value()) {
+                    icon = *cached;
+                } else if (auto png = Ladybird::Application::bookmark_store().favicon_png(*bookmark.favicon_hash); png.has_value()) {
                     icon = Ladybird::favicon_from_png(png->bytes(), 16);
+                    m_favicon_cache.set(*bookmark.favicon_hash, icon);
+                }
             }
             add({ Palette::EntryKind::Bookmark, title, url_string, url_string }, { icon, QString("Bookmark \xC2\xB7 %1").arg(host_for_display(bookmark.url)), {}, {} });
         }
@@ -345,20 +399,35 @@ void CommandPaletteModule::update_results(QString const& query)
     m_popover->set_rows(move(rows));
 }
 
-void CommandPaletteModule::activate(size_t row)
+void CommandPaletteModule::activate(size_t row, OpenIn open_in)
 {
     if (row >= m_row_entries.size())
         return;
     auto entry = m_row_entries[row];
     auto target = m_row_targets[row];
+
+    // A result is copied with a word of confirmation, after which the sheet goes.
+    if (entry.kind == Palette::EntryKind::Calculator) {
+        if (m_calculator_result.isEmpty())
+            return;
+        QApplication::clipboard()->setText(m_calculator_result);
+        m_popover->set_row_detail(row, "Copied \xE2\x9C\x93");
+        QTimer::singleShot(700, m_popover.data(), [popover = m_popover] {
+            if (popover)
+                popover->hide();
+        });
+        return;
+    }
+
+    auto is_page = entry.kind == Palette::EntryKind::Navigate || entry.kind == Palette::EntryKind::Bookmark || entry.kind == Palette::EntryKind::History;
+    if (open_in == OpenIn::NewTab && !is_page)
+        open_in = OpenIn::CurrentTab;
     m_popover->hide();
 
     // NB: Act once the sheet has gone, so focus is back in the window that the action works on.
-    QTimer::singleShot(0, &m_window, [this, entry = move(entry), target = move(target)] {
+    QTimer::singleShot(0, &m_window, [this, entry = move(entry), target = move(target), open_in] {
         switch (entry.kind) {
         case Palette::EntryKind::Calculator:
-            if (!m_calculator_result.isEmpty())
-                QApplication::clipboard()->setText(m_calculator_result);
             break;
         case Palette::EntryKind::Tab:
             if (target.window && target.tab) {
@@ -376,6 +445,8 @@ void CommandPaletteModule::activate(size_t row)
         case Palette::EntryKind::Navigate:
         case Palette::EntryKind::Bookmark:
         case Palette::EntryKind::History:
+            if (open_in == OpenIn::NewTab)
+                m_window.open_new_tab();
             navigate_current_tab(to_qstring(entry.key));
             break;
         }

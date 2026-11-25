@@ -38,6 +38,12 @@ GlanceOverlay::GlanceOverlay(Ladybird::BrowserWindow& window, Ladybird::Tab& ove
 
     m_sheet = new QFrame(this);
     m_sheet->setObjectName("SuperbirdGlanceSheet");
+#if defined(AK_OS_MACOS)
+    // NB: The tab's page is a layer above whatever Qt paints over it, and a native view can't let it show through. So,
+    //     as with Ladybird's JavaScript dialogs, only the sheet is a native view, and the page view dims the page itself.
+    m_sheet->setAttribute(Qt::WA_DontCreateNativeAncestors);
+    m_sheet->setAttribute(Qt::WA_NativeWindow);
+#endif
     auto* sheet_layout = new QVBoxLayout(m_sheet);
     sheet_layout->setContentsMargins(1, 0, 1, 1);
     sheet_layout->setSpacing(0);
@@ -65,9 +71,13 @@ GlanceOverlay::GlanceOverlay(Ladybird::BrowserWindow& window, Ladybird::Tab& ove
         strip_layout->addWidget(button);
         return button;
     };
+    m_back = make_button({}, "Back");
+    m_reload = make_button({}, "Reload");
     m_open_as_tab = make_button("Open as Tab", "Open this page as a tab");
     m_copy_url = make_button("Copy URL", "Copy this page's address");
     m_close = make_button({}, "Close (Esc)");
+    QObject::connect(m_back, &QToolButton::clicked, this, [this] { m_view->traverse_the_history_by_delta(-1); });
+    QObject::connect(m_reload, &QToolButton::clicked, this, [this] { m_view->reload(); });
     QObject::connect(m_open_as_tab, &QToolButton::clicked, this, [this] {
         if (on_promote)
             on_promote();
@@ -97,6 +107,8 @@ GlanceOverlay::GlanceOverlay(Ladybird::BrowserWindow& window, Ladybird::Tab& ove
         if (on_title_changed)
             on_title_changed(qstring_from_utf16_string(title));
     };
+    m_view->on_state_change = [this](auto const&) { m_back->setEnabled(m_view->can_navigate_back()); };
+    m_back->setEnabled(false);
     m_navigation_listener_id = m_view->add_navigation_listener({
         .on_load_start = [this](URL::URL const& url) {
             if (on_navigated)
@@ -110,7 +122,9 @@ GlanceOverlay::GlanceOverlay(Ladybird::BrowserWindow& window, Ladybird::Tab& ove
     // The dimmed backdrop and the sheet float over the tab's page.
     if (over.is_loaded()) {
         over.view().add_floating_surface(*this);
+        // NB: Where the page is a layer of its own (macOS, Wayland), clicks on the dimmed page go to the page view.
         over.view().installEventFilter(this);
+        over.view().set_page_dim(1);
     }
     update_chrome_style();
     sync_geometry();
@@ -126,6 +140,7 @@ GlanceOverlay::~GlanceOverlay()
     if (m_tab && m_tab->is_loaded()) {
         m_tab->view().removeEventFilter(this);
         m_tab->view().remove_floating_surface(*this);
+        m_tab->view().set_page_dim(0);
     }
 }
 
@@ -157,6 +172,8 @@ void GlanceOverlay::update_chrome_style()
                                    Ladybird::ChromeStyle::style_sheet_color(panel.muted),
                                    Ladybird::ChromeStyle::style_sheet_color(panel.control)));
     m_open_as_tab->setIcon(Ladybird::create_chrome_icon(Ladybird::ChromeIcon::ExternalLink, panel.body));
+    m_back->setIcon(Ladybird::create_chrome_icon(Ladybird::ChromeIcon::Back, panel.body));
+    m_reload->setIcon(Ladybird::create_chrome_icon(Ladybird::ChromeIcon::Reload, panel.body));
     m_close->setIcon(Ladybird::create_chrome_icon(Ladybird::ChromeIcon::Close, panel.body));
     update();
 }
@@ -175,6 +192,20 @@ void GlanceOverlay::sync_geometry()
     setGeometry(QRect(view.mapTo(m_tab.data(), QPoint(0, 0)), view.size()));
 }
 
+void GlanceOverlay::showEvent(QShowEvent* event)
+{
+    QWidget::showEvent(event);
+    if (m_tab && m_tab->is_loaded())
+        m_tab->view().set_page_dim(1);
+}
+
+void GlanceOverlay::hideEvent(QHideEvent* event)
+{
+    QWidget::hideEvent(event);
+    if (m_tab && m_tab->is_loaded())
+        m_tab->view().set_page_dim(0);
+}
+
 void GlanceOverlay::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
@@ -183,10 +214,13 @@ void GlanceOverlay::resizeEvent(QResizeEvent* event)
 
 void GlanceOverlay::paintEvent(QPaintEvent*)
 {
+#if !defined(AK_OS_MACOS)
+    // NB: On macOS the page view dims itself (see set_page_dim()); anything painted here would lie under the page.
     QPainter painter(this);
     auto dim = QColor(0, 0, 0);
     dim.setAlphaF(Ladybird::Theme::is_dark() ? 0.5 : 0.3);
     painter.fillRect(rect(), dim);
+#endif
 }
 
 void GlanceOverlay::mousePressEvent(QMouseEvent* event)
@@ -210,8 +244,20 @@ void GlanceOverlay::keyPressEvent(QKeyEvent* event)
 
 bool GlanceOverlay::eventFilter(QObject* watched, QEvent* event)
 {
-    if (m_tab && m_tab->is_loaded() && watched == &m_tab->view() && (event->type() == QEvent::Resize || event->type() == QEvent::Move))
-        sync_geometry();
+    if (m_tab && m_tab->is_loaded() && watched == &m_tab->view()) {
+        if (event->type() == QEvent::Resize || event->type() == QEvent::Move)
+            sync_geometry();
+        // A click on the dimmed page closes the Glance, and the page doesn't see it.
+        if (event->type() == QEvent::MouseButtonPress && isVisible()) {
+            auto position = m_tab->view().mapTo(this, static_cast<QMouseEvent*>(event)->position().toPoint());
+            if (!m_sheet->geometry().contains(position) && on_dismiss) {
+                on_dismiss();
+                return true;
+            }
+        }
+        if ((event->type() == QEvent::MouseButtonRelease || event->type() == QEvent::MouseButtonDblClick) && isVisible())
+            return true;
+    }
     return QWidget::eventFilter(watched, event);
 }
 

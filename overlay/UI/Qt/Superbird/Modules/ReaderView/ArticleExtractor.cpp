@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -694,6 +695,26 @@ private:
                 if (auto value = node.attribute(lazy); value.has_value())
                     source = safe_image_url(m_base_url, *value);
             }
+            // Responsive images: the img's own srcset, then those of the <source>s of its <picture>.
+            auto from_srcset = [&](Node const& element) -> std::optional<std::string> {
+                for (auto attribute_name : { "srcset", "data-srcset" }) {
+                    if (auto value = element.attribute(attribute_name); value.has_value()) {
+                        if (auto candidate = best_srcset_candidate(*value); candidate.has_value())
+                            return safe_image_url(m_base_url, *candidate);
+                    }
+                }
+                return {};
+            };
+            if (!source.has_value())
+                source = from_srcset(node);
+            if (!source.has_value() && node.parent && node.parent->is_element("picture")) {
+                for (auto const& sibling : node.parent->children) {
+                    if (source.has_value())
+                        break;
+                    if (sibling->is_element("source"))
+                        source = from_srcset(*sibling);
+                }
+            }
             if (!source.has_value())
                 return;
             attributes += " src=\"" + escape_html_attribute(*source) + "\"";
@@ -790,6 +811,48 @@ bool is_probably_readerable(std::string_view html)
 {
     auto document = parse_html(html);
     return is_probably_readerable(*document);
+}
+
+std::optional<std::string> best_srcset_candidate(std::string_view srcset)
+{
+    auto is_space = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'; };
+    std::optional<std::string> best;
+    double best_size = -1;
+    size_t i = 0;
+    while (i < srcset.size()) {
+        while (i < srcset.size() && (is_space(srcset[i]) || srcset[i] == ','))
+            ++i;
+        auto url_start = i;
+        while (i < srcset.size() && !is_space(srcset[i]))
+            ++i;
+        auto url = srcset.substr(url_start, i - url_start);
+        bool candidate_ended = false;
+        while (!url.empty() && url.back() == ',') {
+            url.remove_suffix(1);
+            candidate_ended = true;
+        }
+        double size = 0;
+        if (!candidate_ended) {
+            auto descriptors_start = i;
+            while (i < srcset.size() && srcset[i] != ',')
+                ++i;
+            auto descriptors = trim(srcset.substr(descriptors_start, i - descriptors_start));
+            if (descriptors.size() >= 2 && (descriptors.back() == 'w' || descriptors.back() == 'x')) {
+                auto number = std::string(descriptors.substr(0, descriptors.size() - 1));
+                char* end = nullptr;
+                auto value = std::strtod(number.c_str(), &end);
+                if (end && *end == '\0' && std::isfinite(value) && value > 0)
+                    size = descriptors.back() == 'w' ? value : value * 1000;
+            }
+        }
+        if (url.empty())
+            continue;
+        if (!best.has_value() || size > best_size) {
+            best = std::string(url);
+            best_size = size;
+        }
+    }
+    return best;
 }
 
 size_t count_words(std::string_view text)

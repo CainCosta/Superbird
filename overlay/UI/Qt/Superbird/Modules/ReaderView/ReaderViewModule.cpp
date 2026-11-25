@@ -20,11 +20,13 @@
 #include <QAction>
 #include <QKeySequence>
 #include <QShortcut>
+#include <QTimer>
 
 namespace Superbird {
 
 // Pages are checked for an article on every load, on the UI thread, so the check reads at most this much of a page.
 static constexpr size_t READERABLE_CHECK_LIMIT = 2 * 1024 * 1024;
+static constexpr int READERABLE_CHECK_DELAY_MS = 1000;
 
 // Shared by every window for this run.
 static Reader::ReaderPreferences& reader_preferences()
@@ -175,13 +177,13 @@ void ReaderViewModule::attach_view(TabState& state)
             if (!tab || tab.data() != m_window.current_tab())
                 return;
             if (auto* state = state_for(tab.data()))
-                check_readerable(*state);
+                schedule_readerable_check(*state);
         },
     });
 
     update_action(state);
     if (tab == m_window.current_tab())
-        check_readerable(state);
+        schedule_readerable_check(state);
 }
 
 void ReaderViewModule::detach(Ladybird::Tab& tab)
@@ -220,7 +222,7 @@ void ReaderViewModule::on_tab_replaced(Ladybird::Tab const& old_tab, Ladybird::T
 void ReaderViewModule::on_active_tab_changed(Ladybird::Tab* tab)
 {
     if (auto* state = state_for(tab); state && tab->is_loaded())
-        check_readerable(*state);
+        schedule_readerable_check(*state);
 }
 
 void ReaderViewModule::on_chrome_style_changed()
@@ -239,6 +241,21 @@ void ReaderViewModule::page_started_loading(TabState& state)
     state.opening = false;
     state.checked_url.clear();
     close_reader(state);
+}
+
+// The check reads the whole page through the Hub, so it waits until the page has stayed in front for a moment: tabs
+// flicked past and links clicked through on the way somewhere else are never read.
+void ReaderViewModule::schedule_readerable_check(TabState& state)
+{
+    auto* tab = state.tab.data();
+    if (!tab)
+        return;
+    QTimer::singleShot(READERABLE_CHECK_DELAY_MS, &m_window, [this, tab = QPointer(tab), generation = state.generation] {
+        if (!tab || tab.data() != m_window.current_tab() || !is_enabled())
+            return;
+        if (auto* state = state_for(tab.data()); state && state->generation == generation)
+            check_readerable(*state);
+    });
 }
 
 void ReaderViewModule::check_readerable(TabState& state)
@@ -389,10 +406,10 @@ void ReaderViewModule::run(ReaderCommand command)
         toggle(*tab);
         return;
     case ReaderCommand::IncreaseFontSize:
-        preferences.increase_font_size();
+        preferences.zoom_by(1);
         break;
     case ReaderCommand::DecreaseFontSize:
-        preferences.decrease_font_size();
+        preferences.zoom_by(-1);
         break;
     case ReaderCommand::CycleFont:
         preferences.font = preferences.font == Reader::ReaderFont::Serif ? Reader::ReaderFont::Sans

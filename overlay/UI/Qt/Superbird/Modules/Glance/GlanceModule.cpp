@@ -206,11 +206,9 @@ void GlanceModule::on_tab_replaced(Ladybird::Tab const& old_tab, Ladybird::Tab& 
     watch(new_tab);
 }
 
-void GlanceModule::on_active_tab_changed(Ladybird::Tab* tab)
+void GlanceModule::on_active_tab_changed(Ladybird::Tab*)
 {
-    // A Glance belongs to the tab it was opened over.
-    if (m_overlay && m_overlay->tab() != tab)
-        dismiss();
+    // A Glance belongs to the tab it was opened over: it hides and shows along with that tab, and stays open meanwhile.
 }
 
 void GlanceModule::extend_link_context_menu(Ladybird::Tab& tab, Ladybird::Menu& menu, URL::URL const& url)

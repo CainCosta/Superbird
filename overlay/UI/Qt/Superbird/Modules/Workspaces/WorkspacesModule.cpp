@@ -12,6 +12,9 @@
 #include <UI/Qt/Superbird/Core/ModuleRegistry.h>
 #include <UI/Qt/Superbird/Core/WindowHost.h>
 #include <UI/Qt/Superbird/Modules/Workspaces/WorkspaceStore.h>
+#if defined(SUPERBIRD_MODULE_TREE_TABS)
+#    include <UI/Qt/Superbird/Modules/TreeTabs/TreeTabController.h>
+#endif
 #include <UI/Qt/Superbird/Modules/Workspaces/WorkspaceSwitcher.h>
 #include <UI/Qt/Superbird/Modules/Workspaces/WorkspacesModule.h>
 #include <UI/Qt/Tab.h>
@@ -46,8 +49,9 @@ static QKeySequence switch_shortcut(size_t slot)
 {
     auto key = static_cast<Qt::Key>(Qt::Key_1 + static_cast<int>(slot));
 #if defined(AK_OS_MACOS)
-    // NB: Qt::META is the Control key on macOS; Command+digit already selects a tab.
-    return QKeySequence(Qt::META | key);
+    // NB: Qt::META is the Control key on macOS. Command+digit already selects a tab, and Control+digit is Mission
+    //     Control's "Switch to Desktop N", so workspaces take Control+Option+digit.
+    return QKeySequence(Qt::META | Qt::ALT | key);
 #else
     return QKeySequence(Qt::CTRL | Qt::ALT | key);
 #endif
@@ -127,7 +131,7 @@ ModuleInfo WorkspacesModule::module_info()
     return {
         .id = MODULE_ID,
         .name = "Workspaces"sv,
-        .description = "Split a window's tabs into named workspaces (Work, Research, Personal...) and switch between them from the sidebar, the Command Palette or Ctrl+Alt+1-9."sv,
+        .description = "Split a window's tabs into named workspaces (Work, Research, Personal...) and switch between them from the sidebar, the Command Palette or Ctrl+Alt+1-9 (Ctrl+Option+1-9 on macOS)."sv,
         .enabled_by_default = true,
     };
 }
@@ -185,7 +189,6 @@ void WorkspacesModule::install()
         if (auto* tab = m_window.tab_at(index))
             on_tab_added(*tab);
     }
-    ensure_loaded();
     // NB: The window's WindowHost is still being made when its modules are, so the first refresh waits for it.
     QTimer::singleShot(0, &m_window, [this] {
         if (is_enabled())
@@ -274,7 +277,10 @@ Ladybird::Tab* WorkspacesModule::tab_for_key(Workspaces::TabKey key)
     return nullptr;
 }
 
-void WorkspacesModule::ensure_loaded()
+// Only a window restored from the session has stored workspaces. Session ids are SQLite row ids, which get reused once
+// the session tables empty, so a fresh window's id may match rows a long-gone window left behind; a fresh window ignores
+// them, and its first save replaces them.
+void WorkspacesModule::load_restored_state()
 {
     if (m_loaded || !is_enabled())
         return;
@@ -311,7 +317,6 @@ void WorkspacesModule::on_tab_added(Ladybird::Tab& tab)
 {
     if (!is_enabled())
         return;
-    ensure_loaded();
     auto key = key_for(tab);
     m_model.add_tab(key);
     if (!m_switching)
@@ -433,7 +438,7 @@ void WorkspacesModule::on_tabs_restored()
 {
     if (!is_enabled())
         return;
-    ensure_loaded();
+    load_restored_state();
     changed();
 }
 
@@ -483,12 +488,35 @@ void WorkspacesModule::switch_to(Workspaces::WorkspaceId workspace)
     changed();
 }
 
+// With Tree-Style Tabs, a tab takes its whole branch along, so a tree never ends up split across workspaces.
+Vector<Ladybird::Tab*> WorkspacesModule::tab_with_branch(Ladybird::Tab& tab) const
+{
+#if defined(SUPERBIRD_MODULE_TREE_TABS)
+    if (auto* controller = m_window.superbird().tree_tab_controller(); controller && controller->is_enabled()) {
+        if (auto node_id = controller->model().node_id_for_tab(&tab); node_id.has_value()) {
+            auto tabs = controller->model().subtree_tabs(*node_id);
+            if (!tabs.is_empty())
+                return tabs;
+        }
+    }
+#endif
+    return { &tab };
+}
+
 void WorkspacesModule::move_tab_to(Ladybird::Tab& tab, Workspaces::WorkspaceId workspace)
 {
-    if (!m_model.assign_tab(key_for(tab), workspace))
+    bool moved = false;
+    bool moved_current = false;
+    for (auto* member : tab_with_branch(tab)) {
+        if (m_model.assign_tab(key_for(*member), workspace)) {
+            moved = true;
+            moved_current |= member == m_window.current_tab();
+        }
+    }
+    if (!moved)
         return;
-    // A tab that leaves the active workspace takes the window along only if it's the last one there.
-    if (&tab == m_window.current_tab() && workspace != m_model.active_workspace()) {
+    // Tabs that leave the active workspace take the window along only if they were the last ones there.
+    if (moved_current && workspace != m_model.active_workspace()) {
         auto order = strip_order();
         auto remaining = m_model.tabs_in(m_model.active_workspace(), order);
         if (remaining.empty()) {

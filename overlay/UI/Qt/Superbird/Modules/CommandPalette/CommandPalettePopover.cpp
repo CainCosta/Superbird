@@ -56,6 +56,13 @@ public:
     }
 
     size_t row_count() const { return m_rows.size(); }
+    void set_row_detail(size_t row, QString const& detail)
+    {
+        if (row >= m_rows.size())
+            return;
+        m_rows[row].detail = detail;
+        update();
+    }
     int highlighted_row() const { return m_highlighted_row; }
     QRect row_rect(int row) const { return { 0, row * ROW_HEIGHT, width(), ROW_HEIGHT }; }
 
@@ -256,7 +263,12 @@ CommandPalettePopover::CommandPalettePopover(QWidget* parent)
 #else
     auto close_tab_shortcut = QStringLiteral("Ctrl+Backspace");
 #endif
-    m_hint = new QLabel(QString("\xE2\x86\xB5 open  \xC2\xB7  %1 close tab  \xC2\xB7  = calculate  \xC2\xB7  esc dismiss").arg(close_tab_shortcut), &card());
+#if defined(AK_OS_MACOS)
+    auto new_tab_shortcut = QStringLiteral("\xE2\x8C\x98\xE2\x86\xB5");
+#else
+    auto new_tab_shortcut = QStringLiteral("Ctrl+\xE2\x86\xB5");
+#endif
+    m_hint = new QLabel(QString("\xE2\x86\xB5 open  \xC2\xB7  %1 new tab  \xC2\xB7  %2 close tab  \xC2\xB7  = calculate  \xC2\xB7  esc dismiss").arg(new_tab_shortcut, close_tab_shortcut), &card());
     m_hint->setObjectName("LadybirdAllTabsHeading");
     m_hint->setContentsMargins(10, 6, 10, 2);
     layout->addWidget(m_hint);
@@ -269,6 +281,11 @@ void CommandPalettePopover::set_rows(Vector<Row> rows)
     m_scroll_area->verticalScrollBar()->setValue(0);
     card().adjustSize();
     adjustSize();
+}
+
+void CommandPalettePopover::set_row_detail(size_t row, QString const& detail)
+{
+    m_list->set_row_detail(row, detail);
 }
 
 void CommandPalettePopover::clear_query()
@@ -318,6 +335,12 @@ bool CommandPalettePopover::eventFilter(QObject* watched, QEvent* event)
             return true;
         case Qt::Key_Return:
         case Qt::Key_Enter:
+            // NB: Qt reports Command as Control on macOS.
+            if (key_event.modifiers().testFlag(Qt::ControlModifier) && on_activate_in_new_tab) {
+                if (auto row = m_list->highlighted_row(); row >= 0)
+                    on_activate_in_new_tab(static_cast<size_t>(row));
+                return true;
+            }
             m_list->activate_highlighted_row();
             return true;
         case Qt::Key_Backspace:

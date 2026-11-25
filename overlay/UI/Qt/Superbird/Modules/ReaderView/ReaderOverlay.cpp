@@ -6,6 +6,7 @@
 
 #include <UI/Qt/BrowserWindow.h>
 #include <UI/Qt/ChromeStyle.h>
+#include <UI/Qt/FindInPageWidget.h>
 #include <UI/Qt/HubConnection.h>
 #include <UI/Qt/Icon.h>
 #include <UI/Qt/Superbird/Modules/ReaderView/ReaderOverlay.h>
@@ -31,6 +32,12 @@ ReaderOverlay::ReaderOverlay(Ladybird::BrowserWindow& window, Ladybird::Tab& tab
     , m_preferences(preferences)
 {
     setAccessibleName("Reader View");
+#if defined(AK_OS_MACOS)
+    // NB: The tab's page is a layer above whatever Qt paints beside it, so the reader needs a native view of its own
+    //     to show above the page, as Ladybird's own find bar and dialogs do.
+    setAttribute(Qt::WA_DontCreateNativeAncestors);
+    setAttribute(Qt::WA_NativeWindow);
+#endif
 
     auto initial_state = Ladybird::WebContentViewInitialState {
         .is_private = window.is_private(),
@@ -69,6 +76,11 @@ ReaderOverlay::ReaderOverlay(Ladybird::BrowserWindow& window, Ladybird::Tab& tab
     // The floating controls, top right over the article.
     m_controls = new QFrame(this);
     m_controls->setObjectName("SuperbirdReaderControls");
+#if defined(AK_OS_MACOS)
+    // NB: Likewise, the controls float above the reader's own page layer.
+    m_controls->setAttribute(Qt::WA_DontCreateNativeAncestors);
+    m_controls->setAttribute(Qt::WA_NativeWindow);
+#endif
     auto* controls_layout = new QHBoxLayout(m_controls);
     controls_layout->setContentsMargins(6, 4, 6, 4);
     controls_layout->setSpacing(2);
@@ -91,8 +103,8 @@ ReaderOverlay::ReaderOverlay(Ladybird::BrowserWindow& window, Ladybird::Tab& tab
                                                                              : Reader::ReaderFont::Serif;
         });
     });
-    m_smaller_button = make_button("Smaller text", [this] { change([](auto& preferences) { preferences.decrease_font_size(); }); });
-    m_larger_button = make_button("Larger text", [this] { change([](auto& preferences) { preferences.increase_font_size(); }); });
+    m_smaller_button = make_button("Smaller text", [this] { zoom(-1); });
+    m_larger_button = make_button("Larger text", [this] { zoom(1); });
     m_line_height_button = make_button("Line spacing", [this] { change([](auto& preferences) { preferences.cycle_line_height(); }); });
     m_width_button = make_button("Column width", [this] {
         change([](auto& preferences) {
@@ -116,6 +128,23 @@ ReaderOverlay::ReaderOverlay(Ladybird::BrowserWindow& window, Ladybird::Tab& tab
 
     m_view->add_floating_surface(*m_controls);
 
+    // Find in page searches the article, not the page hidden underneath.
+    m_find_in_page = new Ladybird::FindInPageWidget(&tab, m_view);
+    m_view->add_floating_surface(*m_find_in_page);
+    m_find_in_page->setVisible(false);
+    m_view->on_find_in_page = [this](auto current_match_index, auto const& total_match_count) {
+        if (m_find_in_page)
+            m_find_in_page->update_result_label(current_match_index, total_match_count);
+    };
+
+    // Text size is zoom, which the reader's view keeps as the document changes.
+    for (int step = 0; step < abs(m_preferences.zoom_steps); ++step) {
+        if (m_preferences.zoom_steps > 0)
+            m_view->zoom_in();
+        else
+            m_view->zoom_out();
+    }
+
     // The overlay covers exactly the tab's page.
     tab.view().installEventFilter(this);
     sync_geometry_to_tab_view();
@@ -130,6 +159,8 @@ ReaderOverlay::ReaderOverlay(Ladybird::BrowserWindow& window, Ladybird::Tab& tab
 
 ReaderOverlay::~ReaderOverlay()
 {
+    if (m_find_in_page)
+        delete m_find_in_page.data();
     if (m_tab && m_tab->is_loaded())
         m_tab->view().removeEventFilter(this);
     if (m_navigation_listener_id.has_value())
@@ -140,9 +171,35 @@ void ReaderOverlay::set_preferences(Reader::ReaderPreferences const& preferences
 {
     if (m_preferences == preferences)
         return;
+    auto same_document = m_preferences.makes_same_document_as(preferences);
+    apply_zoom_steps(preferences.zoom_steps - m_preferences.zoom_steps);
     m_preferences = preferences;
     update_control_labels();
-    render();
+    // Only a change to the document itself loads it again (and so starts back at the top).
+    if (!same_document)
+        render();
+}
+
+void ReaderOverlay::apply_zoom_steps(int delta)
+{
+    for (int step = 0; step < abs(delta); ++step) {
+        if (delta > 0)
+            m_view->zoom_in();
+        else
+            m_view->zoom_out();
+    }
+}
+
+void ReaderOverlay::zoom(int delta)
+{
+    auto preferences = m_preferences;
+    if (delta == 0)
+        preferences.zoom_by(-preferences.zoom_steps);
+    else
+        preferences.zoom_by(delta);
+    set_preferences(preferences);
+    if (on_preferences_changed)
+        on_preferences_changed(m_preferences);
 }
 
 void ReaderOverlay::change(Function<void(Reader::ReaderPreferences&)> const& mutate)
@@ -176,9 +233,9 @@ void ReaderOverlay::update_control_labels()
         break;
     }
     m_smaller_button->setText("A\xE2\x88\x92");
-    m_smaller_button->setEnabled(m_preferences.can_decrease_font_size());
+    m_smaller_button->setEnabled(m_preferences.can_zoom_out());
     m_larger_button->setText("A+");
-    m_larger_button->setEnabled(m_preferences.can_increase_font_size());
+    m_larger_button->setEnabled(m_preferences.can_zoom_in());
     m_line_height_button->setText(QString("\xE2\x86\x95 %1.%2").arg(m_preferences.line_height / 10).arg(m_preferences.line_height % 10));
     switch (m_preferences.width) {
     case Reader::ReaderWidth::Narrow:
@@ -242,7 +299,8 @@ void ReaderOverlay::position_controls()
 {
     if (!m_controls)
         return;
-    m_controls->move(width() - m_controls->width() - CONTROLS_MARGIN, CONTROLS_MARGIN);
+    // Bottom center, clear of the find bar, which drops in at the top right.
+    m_controls->move((width() - m_controls->width()) / 2, height() - m_controls->height() - CONTROLS_MARGIN);
     m_controls->raise();
 }
 
@@ -262,6 +320,38 @@ bool ReaderOverlay::eventFilter(QObject* watched, QEvent* event)
 // Keys the article doesn't use (it has no scripts) come back to the overlay.
 void ReaderOverlay::keyPressEvent(QKeyEvent* event)
 {
+    // The browser's find and zoom shortcuts work on the article while the reader has focus.
+    if (event->matches(QKeySequence::Find)) {
+        m_find_in_page->setVisible(true);
+        m_find_in_page->raise();
+        m_find_in_page->focus_search_field();
+        event->accept();
+        return;
+    }
+    if (event->matches(QKeySequence::FindNext) || event->matches(QKeySequence::FindPrevious)) {
+        if (event->matches(QKeySequence::FindNext))
+            m_find_in_page->find_next();
+        else
+            m_find_in_page->find_previous();
+        event->accept();
+        return;
+    }
+    auto modifiers = event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+    if (event->matches(QKeySequence::ZoomIn) || (modifiers.testFlag(Qt::ControlModifier) && event->key() == Qt::Key_Equal)) {
+        zoom(1);
+        event->accept();
+        return;
+    }
+    if (event->matches(QKeySequence::ZoomOut)) {
+        zoom(-1);
+        event->accept();
+        return;
+    }
+    if (modifiers == Qt::ControlModifier && event->key() == Qt::Key_0) {
+        zoom(0);
+        event->accept();
+        return;
+    }
     if (event->key() == Qt::Key_Escape && event->modifiers() == Qt::NoModifier) {
         if (on_close_requested)
             on_close_requested();

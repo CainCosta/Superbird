@@ -71,7 +71,7 @@ private:
     bool is_enabled() const;
     void install();
     void uninstall();
-    void ensure_loaded();
+    void load_restored_state();
     Workspaces::TabKey key_for(Ladybird::Tab&);
     std::vector<Workspaces::TabKey> strip_order();
     Ladybird::Tab* tab_for_key(Workspaces::TabKey);
@@ -81,6 +81,7 @@ private:
     void rename_workspace_interactively(Workspaces::WorkspaceId);
     void change_icon_interactively(Workspaces::WorkspaceId);
     void delete_workspace(Workspaces::WorkspaceId);
+    Vector<Ladybird::Tab*> tab_with_branch(Ladybird::Tab&) const;
     void move_tab_to(Ladybird::Tab&, Workspaces::WorkspaceId);
     void fill_workspace_menu(QMenu&, Workspaces::WorkspaceId);
     void fill_overview_menu(QMenu&);

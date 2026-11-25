@@ -271,12 +271,13 @@ Vector<VisibleTreeRow> TreeTabController::visible_rows() const
 {
     Vector<VisibleTreeRow> rows;
     if (auto query = m_filter_text.trimmed(); !query.isEmpty()) {
-        auto query_utf8 = query.toUtf8();
+        // NB: Qt folds case for every script, so "É" finds "é"; the matcher then compares the folded bytes.
+        auto query_utf8 = query.toCaseFolded().toUtf8();
         std::string_view query_view { query_utf8.constData(), static_cast<size_t>(query_utf8.size()) };
         rows = m_model.filtered_rows([&](Tab const& tab) {
-            auto title = tab.title().toUtf8();
-            auto url = tab.url().to_byte_string();
-            return Superbird::TreeTabs::tab_matches_filter({ title.constData(), static_cast<size_t>(title.size()) }, { url.characters(), url.length() }, query_view);
+            auto title = tab.title().toCaseFolded().toUtf8();
+            auto url = QString::fromUtf8(tab.url().to_byte_string().characters()).toCaseFolded().toUtf8();
+            return Superbird::TreeTabs::tab_matches_filter({ title.constData(), static_cast<size_t>(title.size()) }, { url.constData(), static_cast<size_t>(url.size()) }, query_view);
         });
     } else {
         rows = m_model.visible_rows(

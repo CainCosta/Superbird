@@ -23,6 +23,18 @@ void ReaderPreferences::increase_font_size()
     font_size = std::min(MAXIMUM_FONT_SIZE, font_size + FONT_SIZE_STEP);
 }
 
+int ReaderPreferences::zoom_by(int delta)
+{
+    auto before = zoom_steps;
+    zoom_steps = std::clamp(zoom_steps + delta, -MAXIMUM_ZOOM_STEPS, MAXIMUM_ZOOM_STEPS);
+    return zoom_steps - before;
+}
+
+bool ReaderPreferences::makes_same_document_as(ReaderPreferences const& other) const
+{
+    return font == other.font && font_size == other.font_size && line_height == other.line_height && width == other.width && theme == other.theme;
+}
+
 void ReaderPreferences::cycle_line_height()
 {
     line_height += LINE_HEIGHT_STEP;

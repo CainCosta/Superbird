@@ -160,19 +160,19 @@ QFrame* SplitViewHost::build_pane(Split::PaneId pane_id, Ladybird::Tab& tab)
         return button;
     };
     auto* swap = make_button("Swap Panes");
-    swap->setText("\xE2\x87\x84");
+    swap->setProperty("superbirdChromeIcon", static_cast<int>(Ladybird::ChromeIcon::DoubleChevronRight));
     QObject::connect(swap, &QToolButton::clicked, this, [this] {
         if (on_swap)
             on_swap();
     });
     auto* unsplit = make_button("Unsplit");
-    unsplit->setText("\xE2\x96\xA2");
+    unsplit->setProperty("superbirdChromeIcon", static_cast<int>(Ladybird::ChromeIcon::WindowMaximize));
     QObject::connect(unsplit, &QToolButton::clicked, this, [this] {
         if (on_unsplit)
             on_unsplit();
     });
     auto* remove = make_button("Remove from Split");
-    remove->setIcon(Ladybird::create_chrome_icon(Ladybird::ChromeIcon::Close, Ladybird::Theme::chrome().icon));
+    remove->setProperty("superbirdChromeIcon", static_cast<int>(Ladybird::ChromeIcon::TabClose));
     QObject::connect(remove, &QToolButton::clicked, this, [this, pane_id] {
         if (on_remove_pane)
             on_remove_pane(pane_id);
@@ -223,8 +223,9 @@ void SplitViewHost::style_pane(Split::PaneId pane_id, Pane const& pane)
     auto focused = pane_id == m_focused;
     auto border = focused ? Ladybird::Theme::accent() : chrome.divider;
     pane.frame->setStyleSheet(QString(
-        "QFrame#SuperbirdSplitPane { border: %1px solid %2; border-radius: 6px; }"
-        "QWidget#SuperbirdSplitPaneHeader { background: %3; border-top-left-radius: 6px; border-top-right-radius: 6px; }"
+        // NB: Square corners: the page inside is a native view, which a rounded frame can't clip.
+        "QFrame#SuperbirdSplitPane { border: %1px solid %2; }"
+        "QWidget#SuperbirdSplitPaneHeader { background: %3; }"
         "QLabel#SuperbirdSplitPaneTitle { color: %4; font-size: 12px; }"
         "QWidget#SuperbirdSplitPaneHeader QToolButton { color: %5; border: none; border-radius: 4px; }"
         "QWidget#SuperbirdSplitPaneHeader QToolButton:hover { background: %6; }")
@@ -234,6 +235,10 @@ void SplitViewHost::style_pane(Split::PaneId pane_id, Pane const& pane)
                 Ladybird::ChromeStyle::style_sheet_color(focused ? chrome.text : chrome.muted),
                 Ladybird::ChromeStyle::style_sheet_color(chrome.icon),
                 Ladybird::ChromeStyle::style_sheet_color(chrome.hover)));
+    for (auto* button : pane.frame->findChildren<QToolButton*>()) {
+        if (auto icon = button->property("superbirdChromeIcon"); icon.isValid())
+            button->setIcon(Ladybird::create_chrome_icon(static_cast<Ladybird::ChromeIcon>(icon.toInt()), chrome.icon));
+    }
 }
 
 bool SplitViewHost::eventFilter(QObject* watched, QEvent* event)

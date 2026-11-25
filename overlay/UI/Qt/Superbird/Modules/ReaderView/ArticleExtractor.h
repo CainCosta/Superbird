@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -45,6 +46,10 @@ Article extract_article(std::string_view html, std::string_view page_url);
 // enough to run on every page load.
 bool is_probably_readerable(std::string_view html);
 bool is_probably_readerable(Node const& document);
+
+// The best image candidate in a srcset attribute: the widest (`640w`) or densest (`2x`) one, else the first. Returns
+// nothing for an empty or unparsable srcset.
+std::optional<std::string> best_srcset_candidate(std::string_view srcset);
 
 // Words in text: runs of non-whitespace, with each CJK ideograph or kana counted as its own word.
 size_t count_words(std::string_view text);
