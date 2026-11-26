@@ -7,6 +7,8 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
+use adblock::cosmetic_filter_cache::ProceduralOrActionFilter;
+use adblock::filters::cosmetic::CosmeticFilterOperator;
 use adblock::lists::{FilterFormat, FilterSet, ParseOptions};
 use adblock::resources::{
     InMemoryResourceStorage, PermissionMask, Resource, ResourceImpl, ResourceStorageBackend,
@@ -555,22 +557,585 @@ pub fn create_engine(input: &str) -> ContentBlockerEngine {
     }
 }
 
+const PROCEDURAL_COSMETIC_RUNNER_JS: &str = r#"(function(rules) {
+if (!Array.isArray(rules) || rules.length === 0) return;
+const _qsa = Document.prototype.querySelectorAll;
+const _elQsa = Element.prototype.querySelectorAll;
+const _closest = Element.prototype.closest;
+const _gcs = window.getComputedStyle;
+const _evalXPath = Document.prototype.evaluate;
+const _MO = window.MutationObserver;
+const _rAF = window.requestAnimationFrame;
+const _setTimeout = window.setTimeout;
+
+function parseMatcher(raw) {
+    if (typeof raw !== "string") return null;
+    const m = /^\/(.+)\/([dgimsuvy]*)$/.exec(raw);
+    if (m) {
+        try {
+            const re = new RegExp(m[1], m[2]);
+            return (s) => re.test(s);
+        } catch (_) {
+            return () => false;
+        }
+    }
+    return (s) => s.indexOf(raw) !== -1;
+}
+
+function parseExactOrRegex(raw) {
+    if (typeof raw !== "string") return null;
+    const trimmed = raw.trim();
+    const m = /^\/(.+)\/([dgimsuvy]*)$/.exec(trimmed);
+    if (m) {
+        try {
+            const re = new RegExp(m[1], m[2]);
+            return (s) => re.test(s);
+        } catch (_) {
+            return () => false;
+        }
+    }
+    const unquoted = (trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))
+        ? trimmed.slice(1, -1)
+        : trimmed;
+    return (s) => s === unquoted;
+}
+
+function unquote(s) {
+    const t = s.trim();
+    if (t.length >= 2 && ((t[0] === '"' && t[t.length - 1] === '"') || (t[0] === "'" && t[t.length - 1] === "'"))) {
+        return t.slice(1, -1);
+    }
+    return t;
+}
+
+function matchAttr(el, arg) {
+    if (!el.attributes) return false;
+    let raw = arg.trim();
+    let eqIdx = -1;
+    let quote = null;
+    let inRegex = false;
+    for (let i = 0; i < raw.length; i++) {
+        const ch = raw[i];
+        if (ch === "\\" && i + 1 < raw.length) { i++; continue; }
+        if (quote) { if (ch === quote) quote = null; continue; }
+        if (inRegex) { if (ch === "/") inRegex = false; continue; }
+        if (ch === '"' || ch === "'") { quote = ch; continue; }
+        if (ch === "/" && i === 0) { inRegex = true; continue; }
+        if (ch === "=") { eqIdx = i; break; }
+    }
+    const nameSpec = eqIdx === -1 ? raw : raw.slice(0, eqIdx).trim();
+    const valSpec = eqIdx === -1 ? null : raw.slice(eqIdx + 1).trim();
+    const matchName = parseExactOrRegex(nameSpec);
+    const matchVal = valSpec === null ? null : parseExactOrRegex(valSpec);
+    if (!matchName) return false;
+    for (let i = 0; i < el.attributes.length; i++) {
+        const attr = el.attributes[i];
+        if (!matchName(attr.name)) continue;
+        if (matchVal === null || matchVal(attr.value)) return true;
+    }
+    return false;
+}
+
+function matchCss(el, arg, pseudo) {
+    const colon = arg.indexOf(":");
+    if (colon === -1) return false;
+    const prop = arg.slice(0, colon).trim();
+    const expected = arg.slice(colon + 1).trim();
+    const matcher = parseExactOrRegex(expected);
+    if (!matcher) return false;
+    try {
+        const style = _gcs.call(window, el, pseudo);
+        if (!style) return false;
+        const val = style.getPropertyValue(prop).trim();
+        return matcher(val);
+    } catch (_) {
+        return false;
+    }
+}
+
+function matchPath(arg) {
+    let raw = arg.trim();
+    let negate = false;
+    if (raw.startsWith("!")) {
+        negate = true;
+        raw = raw.slice(1).trim();
+    }
+    const matcher = parseMatcher(raw);
+    if (!matcher) return false;
+    const current = (window.location.pathname || "") + (window.location.search || "");
+    const matched = matcher(current);
+    return negate ? !matched : matched;
+}
+
+function dedupe(nodes) {
+    const seen = new Set();
+    const out = [];
+    for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        if (n && n.nodeType === 1 && !seen.has(n)) {
+            seen.add(n);
+            out.push(n);
+        }
+    }
+    return out;
+}
+
+function evalRule(rule) {
+    let nodes = null;
+    for (let i = 0; i < rule.selector.length; i++) {
+        const op = rule.selector[i];
+        const arg = op.arg || "";
+        switch (op.type) {
+            case "css-selector": {
+                if (nodes === null) {
+                    try { nodes = Array.from(_qsa.call(document, arg)); } catch (_) { return []; }
+                } else {
+                    const next = [];
+                    const scoped = /^\s*[>+~]/.test(arg) ? ":scope " + arg : arg;
+                    for (let j = 0; j < nodes.length; j++) {
+                        try {
+                            const found = _elQsa.call(nodes[j], scoped);
+                            for (let k = 0; k < found.length; k++) next.push(found[k]);
+                        } catch (_) {}
+                    }
+                    nodes = dedupe(next);
+                }
+                break;
+            }
+            case "has-text": {
+                if (nodes === null) {
+                    try { nodes = Array.from(_qsa.call(document, "*")); } catch (_) { return []; }
+                }
+                const matcher = parseMatcher(arg);
+                if (!matcher) return [];
+                nodes = nodes.filter((el) => matcher(el.textContent || ""));
+                break;
+            }
+            case "min-text-length": {
+                if (nodes === null) {
+                    try { nodes = Array.from(_qsa.call(document, "*")); } catch (_) { return []; }
+                }
+                const minLen = parseInt(arg, 10);
+                if (!Number.isFinite(minLen)) return [];
+                nodes = nodes.filter((el) => (el.textContent || "").trim().length >= minLen);
+                break;
+            }
+            case "matches-path": {
+                if (!matchPath(arg)) return [];
+                if (nodes === null) {
+                    nodes = document.documentElement ? [document.documentElement] : [];
+                }
+                break;
+            }
+            case "matches-attr": {
+                if (nodes === null) {
+                    try { nodes = Array.from(_qsa.call(document, "*")); } catch (_) { return []; }
+                }
+                nodes = nodes.filter((el) => matchAttr(el, arg));
+                break;
+            }
+            case "matches-css":
+            case "matches-css-before":
+            case "matches-css-after": {
+                if (nodes === null) {
+                    try { nodes = Array.from(_qsa.call(document, "*")); } catch (_) { return []; }
+                }
+                const pseudo = op.type === "matches-css-before" ? "::before" : (op.type === "matches-css-after" ? "::after" : null);
+                nodes = nodes.filter((el) => matchCss(el, arg, pseudo));
+                break;
+            }
+            case "upward": {
+                if (nodes === null) return [];
+                const trimmed = arg.trim();
+                const next = [];
+                if (/^\d+$/.test(trimmed)) {
+                    const steps = parseInt(trimmed, 10);
+                    for (let j = 0; j < nodes.length; j++) {
+                        let cur = nodes[j];
+                        for (let s = 0; s < steps && cur; s++) cur = cur.parentElement;
+                        if (cur) next.push(cur);
+                    }
+                } else {
+                    for (let j = 0; j < nodes.length; j++) {
+                        try {
+                            const p = nodes[j].parentElement;
+                            const anc = p ? _closest.call(p, trimmed) : null;
+                            if (anc) next.push(anc);
+                        } catch (_) {}
+                    }
+                }
+                nodes = dedupe(next);
+                break;
+            }
+            case "xpath": {
+                const contexts = nodes === null ? [document] : nodes;
+                const next = [];
+                for (let j = 0; j < contexts.length; j++) {
+                    try {
+                        const snap = _evalXPath.call(document, arg, contexts[j], null, 7, null);
+                        for (let k = 0; k < snap.snapshotLength; k++) {
+                            const item = snap.snapshotItem(k);
+                            if (item && item.nodeType === 1) next.push(item);
+                        }
+                    } catch (_) {}
+                }
+                nodes = dedupe(next);
+                break;
+            }
+            default:
+                return [];
+        }
+        if (!nodes || nodes.length === 0) return [];
+    }
+    return nodes || [];
+}
+
+function applyAction(el, action) {
+    if (!action) {
+        if (el.style.getPropertyValue("display") !== "none" || el.style.getPropertyPriority("display") !== "important") {
+            el.style.setProperty("display", "none", "important");
+        }
+        return;
+    }
+    switch (action.type) {
+        case "remove":
+            el.remove();
+            break;
+        case "remove-attr":
+            if (action.arg && el.hasAttribute(action.arg)) el.removeAttribute(action.arg);
+            break;
+        case "remove-class":
+            if (action.arg && el.classList && el.classList.contains(action.arg)) el.classList.remove(action.arg);
+            break;
+        case "style": {
+            const decls = String(action.arg || "").split(";");
+            for (let i = 0; i < decls.length; i++) {
+                const decl = decls[i].trim();
+                if (!decl) continue;
+                const colon = decl.indexOf(":");
+                if (colon === -1) continue;
+                const prop = decl.slice(0, colon).trim();
+                let val = decl.slice(colon + 1).trim();
+                let prio = "";
+                if (/\s*!important$/i.test(val)) {
+                    val = val.replace(/\s*!important$/i, "").trim();
+                    prio = "important";
+                }
+                if (el.style.getPropertyValue(prop) !== val || el.style.getPropertyPriority(prop) !== prio) {
+                    el.style.setProperty(prop, val, prio);
+                }
+            }
+            break;
+        }
+    }
+}
+
+let observer = null;
+let scheduled = false;
+
+function runPass() {
+    scheduled = false;
+    if (!document.documentElement) return;
+    if (observer) observer.disconnect();
+    try {
+        for (let i = 0; i < rules.length; i++) {
+            const matched = evalRule(rules[i]);
+            for (let j = 0; j < matched.length; j++) {
+                try { applyAction(matched[j], rules[i].action || null); } catch (_) {}
+            }
+        }
+    } finally {
+        if (observer && document.documentElement) {
+            observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+        }
+    }
+}
+
+function schedulePass() {
+    if (scheduled) return;
+    scheduled = true;
+    if (typeof _rAF === "function") {
+        _rAF.call(window, runPass);
+    } else {
+        _setTimeout.call(window, runPass, 16);
+    }
+}
+
+function init() {
+    if (!document.documentElement) return;
+    if (!observer && typeof _MO === "function") {
+        observer = new _MO(schedulePass);
+    }
+    runPass();
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init, { once: true });
+    if (document.documentElement) schedulePass();
+} else {
+    init();
+}
+window.addEventListener("popstate", schedulePass);
+window.addEventListener("hashchange", schedulePass);
+})("#;
+
+const PROCEDURAL_PSEUDO_NAMES: &[(&str, &str)] = &[
+    (":has-text(", "has-text"),
+    (":-abp-contains(", "has-text"),
+    (":matches-attr(", "matches-attr"),
+    (":matches-css-before(", "matches-css-before"),
+    (":matches-css-after(", "matches-css-after"),
+    (":matches-css(", "matches-css"),
+    (":matches-path(", "matches-path"),
+    (":min-text-length(", "min-text-length"),
+    (":upward(", "upward"),
+    (":xpath(", "xpath"),
+];
+
+pub fn contains_procedural_operator(selector: &str) -> bool {
+    PROCEDURAL_PSEUDO_NAMES
+        .iter()
+        .any(|(needle, _)| selector.contains(needle))
+}
+
+fn find_matching_paren(s: &str, open_paren_index: usize) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut depth = 0usize;
+    let mut quote: Option<u8> = None;
+    let mut in_regex = false;
+    let mut i = open_paren_index;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'\\' && i + 1 < bytes.len() {
+            i += 2;
+            continue;
+        }
+        if let Some(q) = quote {
+            if b == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        if in_regex {
+            if b == b'/' {
+                in_regex = false;
+            }
+            i += 1;
+            continue;
+        }
+        match b {
+            b'"' | b'\'' => quote = Some(b),
+            b'/' if i == open_paren_index + 1 => in_regex = true,
+            b'(' => depth += 1,
+            b')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+fn make_procedural_operator(kind: &str, arg: String) -> Option<CosmeticFilterOperator> {
+    match kind {
+        "has-text" => Some(CosmeticFilterOperator::HasText(arg)),
+        "matches-attr" => Some(CosmeticFilterOperator::MatchesAttr(arg)),
+        "matches-css" => Some(CosmeticFilterOperator::MatchesCss(arg)),
+        "matches-css-before" => Some(CosmeticFilterOperator::MatchesCssBefore(arg)),
+        "matches-css-after" => Some(CosmeticFilterOperator::MatchesCssAfter(arg)),
+        "matches-path" => Some(CosmeticFilterOperator::MatchesPath(arg)),
+        "min-text-length" => Some(CosmeticFilterOperator::MinTextLength(arg)),
+        "upward" => Some(CosmeticFilterOperator::Upward(arg)),
+        "xpath" => Some(CosmeticFilterOperator::Xpath(arg)),
+        _ => None,
+    }
+}
+
+pub fn parse_procedural_selector(selector: &str) -> Option<Vec<CosmeticFilterOperator>> {
+    if !contains_procedural_operator(selector) {
+        return None;
+    }
+
+    let mut ops = Vec::new();
+    let bytes = selector.as_bytes();
+    let mut css_start = 0usize;
+    let mut i = 0usize;
+    let mut quote: Option<u8> = None;
+    let mut bracket_depth = 0usize;
+    let mut paren_depth = 0usize;
+
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'\\' && i + 1 < bytes.len() {
+            i += 2;
+            continue;
+        }
+        if let Some(q) = quote {
+            if b == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        match b {
+            b'"' | b'\'' => {
+                quote = Some(b);
+                i += 1;
+                continue;
+            }
+            b'[' => {
+                bracket_depth += 1;
+                i += 1;
+                continue;
+            }
+            b']' => {
+                bracket_depth = bracket_depth.saturating_sub(1);
+                i += 1;
+                continue;
+            }
+            b'(' => {
+                paren_depth += 1;
+                i += 1;
+                continue;
+            }
+            b')' => {
+                paren_depth = paren_depth.saturating_sub(1);
+                i += 1;
+                continue;
+            }
+            b':' if bracket_depth == 0 && paren_depth == 0 => {
+                let tail = &selector[i..];
+                if let Some((prefix, op_kind)) = PROCEDURAL_PSEUDO_NAMES
+                    .iter()
+                    .find(|(prefix, _)| tail.starts_with(prefix))
+                {
+                    let open_idx = i + prefix.len() - 1;
+                    let close_idx = find_matching_paren(selector, open_idx)?;
+                    let css_chunk = selector[css_start..i].trim();
+                    if !css_chunk.is_empty() {
+                        ops.push(CosmeticFilterOperator::CssSelector(css_chunk.to_string()));
+                    }
+                    let arg = selector[open_idx + 1..close_idx].to_string();
+                    ops.push(make_procedural_operator(op_kind, arg)?);
+                    i = close_idx + 1;
+                    css_start = i;
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+
+    let trailing = selector[css_start..].trim();
+    if !trailing.is_empty() {
+        ops.push(CosmeticFilterOperator::CssSelector(trailing.to_string()));
+    }
+
+    if ops.iter().any(|op| !matches!(op, CosmeticFilterOperator::CssSelector(_))) {
+        Some(ops)
+    } else {
+        None
+    }
+}
+
+fn expand_filter_operators(filter: &ProceduralOrActionFilter) -> ProceduralOrActionFilter {
+    let mut expanded = Vec::with_capacity(filter.selector.len());
+    for op in &filter.selector {
+        if let CosmeticFilterOperator::CssSelector(css) = op
+            && let Some(parsed) = parse_procedural_selector(css)
+        {
+            expanded.extend(parsed);
+        } else {
+            expanded.push(op.clone());
+        }
+    }
+    ProceduralOrActionFilter {
+        selector: expanded,
+        action: filter.action.clone(),
+    }
+}
+
+pub fn collect_procedural_filters(
+    cosmetic: &adblock::cosmetic_filter_cache::UrlSpecificResources,
+) -> Vec<serde_json::Value> {
+    let mut entries: Vec<(String, serde_json::Value)> = Vec::new();
+
+    for selector in &cosmetic.hide_selectors {
+        if let Some(ops) = parse_procedural_selector(selector) {
+            let filter = ProceduralOrActionFilter {
+                selector: ops,
+                action: None,
+            };
+            if let Ok(value) = serde_json::to_value(&filter) {
+                entries.push((selector.clone(), value));
+            }
+        }
+    }
+
+    for raw in &cosmetic.procedural_actions {
+        let Ok(filter) = serde_json::from_str::<ProceduralOrActionFilter>(raw) else {
+            continue;
+        };
+        let expanded = expand_filter_operators(&filter);
+        if expanded.as_css().is_some() {
+            continue;
+        }
+        if let Ok(value) = serde_json::to_value(&expanded) {
+            entries.push((raw.clone(), value));
+        }
+    }
+
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    entries.dedup_by(|a, b| a.0 == b.0);
+    entries.into_iter().map(|(_, v)| v).collect()
+}
+
+#[cfg(test)]
+pub fn procedural_filters_for_url(engine: &ContentBlockerEngine, url: &str) -> Vec<serde_json::Value> {
+    if !engine.is_ubo_mode {
+        return Vec::new();
+    }
+    let cosmetic = engine.engine.url_cosmetic_resources(url);
+    collect_procedural_filters(&cosmetic)
+}
+
 pub fn injected_script_for_url(engine: &ContentBlockerEngine, url: &str) -> String {
     if !engine.is_ubo_mode {
         return String::new();
     }
     let cosmetic = engine.engine.url_cosmetic_resources(url);
-    if cosmetic.injected_script.trim().is_empty() {
+    let procedural_values = collect_procedural_filters(&cosmetic);
+
+    let has_scriptlets = !cosmetic.injected_script.trim().is_empty();
+    let has_procedural = !procedural_values.is_empty();
+    if !has_scriptlets && !has_procedural {
         return String::new();
     }
 
-    let mut out = String::with_capacity(cosmetic.injected_script.len() + 96);
-    out.push_str("(function() {\nconst scriptletGlobals = {};\ntry {\n");
-    out.push_str(&cosmetic.injected_script);
-    if !out.ends_with('\n') {
-        out.push('\n');
+    let mut out = String::new();
+    if has_scriptlets {
+        out.push_str("(function() {\nconst scriptletGlobals = {};\ntry {\n");
+        out.push_str(&cosmetic.injected_script);
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str("} catch (_superbird_scriptlet_err) {}\n})();\n");
     }
-    out.push_str("} catch (_superbird_scriptlet_err) {}\n})();\n");
+
+    if has_procedural {
+        if let Ok(json) = serde_json::to_string(&procedural_values) {
+            out.push_str(PROCEDURAL_COSMETIC_RUNNER_JS);
+            out.push_str(&json);
+            out.push_str(");\n");
+        }
+    }
+
     out
 }
 
@@ -1104,5 +1669,35 @@ example.com##+js(trusted-set-cookie)
             )
             .is_empty()
         );
+    }
+
+    #[test]
+    fn procedural_and_action_cosmetic_rules_emit_css_or_runner() {
+        let rules = "\
+example.com##.styled:style(opacity: 0.5 !important)
+example.com##.card:has-text(Sponsored):upward(1)
+example.com##.removable:remove()
+example.com##.attr-target:remove-attr(data-ad)
+example.com##.class-target:remove-class(ad-highlight)
+example.com##.css-target:matches-css(z-index: 999)
+example.com##:xpath(//div[@data-promo='1'])
+";
+        let mut bundle = String::from("!superbird:meta version=1 mode=ubo\n");
+        bundle.push_str(&make_bundle_list("uboFilters", 1, "standard", rules));
+        bundle.push_str("!superbird:end\n");
+
+        let engine = create_engine(&bundle);
+        let procedural = procedural_filters_for_url(&engine, "https://example.com/");
+        // Pure :style() is handled via CSS, not procedural runner; the remaining 6 are procedural/action rules
+        assert_eq!(procedural.len(), 6);
+
+        let script = injected_script_for_url(&engine, "https://example.com/");
+        assert!(script.contains("has-text"));
+        assert!(script.contains("upward"));
+        assert!(script.contains("remove-attr"));
+        assert!(script.contains("remove-class"));
+        assert!(script.contains("matches-css"));
+        assert!(script.contains("xpath"));
+        assert!(!script.contains("opacity: 0.5"));
     }
 }

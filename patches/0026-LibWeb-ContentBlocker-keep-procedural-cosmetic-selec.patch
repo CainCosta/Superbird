@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 19:17:11 -0600
+Subject: [PATCH] LibWeb/ContentBlocker: keep procedural cosmetic selectors out
+ of plain CSS
+
+
+diff --git a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
+index 91bde90b..71a34f32 100644
+--- a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
++++ b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
+@@ -302,6 +302,7 @@ fn cosmetic_css_for_url(engine: &ContentBlockerEngine, url: &str, classes: &[&st
+ 
+     let mut selector_styles: Vec<_> = selectors
+         .into_iter()
++        .filter(|selector| !engine.is_ubo_mode || !superbird::contains_procedural_operator(selector))
+         .map(|selector| (selector, "display: none !important".to_string()))
+         .collect();
+ 
+@@ -311,7 +312,9 @@ fn cosmetic_css_for_url(engine: &ContentBlockerEngine, url: &str, classes: &[&st
+             continue;
+         };
+         if let Some((selector, style)) = filter.as_css() {
+-            selector_styles.push((selector, style));
++            if !engine.is_ubo_mode || !superbird::contains_procedural_operator(&selector) {
++                selector_styles.push((selector, style));
++            }
+         }
+     }
+ 

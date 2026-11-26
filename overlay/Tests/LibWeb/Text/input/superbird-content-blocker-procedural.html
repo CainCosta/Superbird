@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<head></head>
+<body>
+<script>
+    function makeBundle(mode, lists) {
+        let out = `!superbird:meta version=1 mode=${mode}\n`;
+        for (const list of lists) {
+            out += `!superbird:list id=${list.id} trust=${list.trust} format=standard bytes=${list.body.length}\n`;
+            out += list.body + "\n";
+        }
+        out += "!superbird:end\n";
+        return out;
+    }
+
+    (async () => {
+        const lines = [];
+        const println = (s) => lines.push(String(s));
+
+        const base = document.createElement("base");
+        base.href = "http://example.test/promo-page?tab=1";
+        document.head.appendChild(base);
+
+        const rules = [
+            "example.test##.pure-style:style(background-color: rgb(1, 2, 3) !important;)",
+            "example.test##.card-badge:has-text(Sponsored):upward(1)",
+            "example.test##.promo-item:has-text(/Promoted\\s+Post/i):upward(.feed-row)",
+            "example.test##.kill-me:remove()",
+            "example.test##.strip-attr:remove-attr(data-tracker)",
+            "example.test##.strip-class:remove-class(ad-blurred)",
+            "example.test##.css-match:matches-css(z-index: 9999)",
+            "example.test##.attr-match:matches-attr(data-kind=\"ad-unit\")",
+            "example.test##.long-ad:min-text-length(20)",
+            "example.test##:xpath(//div[@data-xpath-ad='yes'])",
+            "example.test##.dynamic-ad:has-text(Late Ad)",
+        ].join("\n");
+
+        try {
+            internals.setContentBlockingEnabled(true);
+            internals.setContentBlockers(makeBundle("ubo", [{ id: "uboFilters", trust: 1, body: rules }]));
+
+            const frame = document.createElement("iframe");
+            const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+            frame.srcdoc = `<!DOCTYPE html>
+                <style>
+                    .css-match { z-index: 9999; position: relative; }
+                    .css-keep { z-index: 1; position: relative; }
+                </style>
+                <body>
+                    <div class="pure-style">styled</div>
+                    <div class="card"><span class="card-badge">Sponsored</span></div>
+                    <div class="card-keep"><span class="card-badge">Organic</span></div>
+                    <div class="feed-row" id="promo-row"><div><span class="promo-item">Promoted Post</span></div></div>
+                    <div class="kill-me" id="removed-node">bye</div>
+                    <div class="strip-attr" id="attr-node" data-tracker="123" data-keep="ok">attr</div>
+                    <div class="strip-class ad-blurred keep-cls" id="cls-node">cls</div>
+                    <div class="css-match" id="css-ad">css-ad</div>
+                    <div class="css-keep" id="css-ok">css-ok</div>
+                    <div class="attr-match" id="attr-ad" data-kind="ad-unit">attr-ad</div>
+                    <div class="attr-match" id="attr-ok" data-kind="article">attr-ok</div>
+                    <div class="long-ad" id="long-ad">This advertisement text is definitely longer than twenty chars</div>
+                    <div class="long-ad" id="short-ok">Short</div>
+                    <div data-xpath-ad="yes" id="xpath-ad">xpath-ad</div>
+                </body>`;
+            document.body.appendChild(frame);
+            await loaded;
+            // Allow one animation frame for procedural runner pass
+            await new Promise((r) => setTimeout(r, 40));
+
+            const d = frame.contentDocument;
+            const w = frame.contentWindow;
+            const disp = (sel) => {
+                const el = d.querySelector(sel);
+                return el ? w.getComputedStyle(el).display : "REMOVED";
+            };
+
+            println("pure-style bg: " + w.getComputedStyle(d.querySelector(".pure-style")).backgroundColor);
+            println("upward(1) sponsored: " + disp(".card"));
+            println("upward(1) organic: " + disp(".card-keep"));
+            println("upward(sel) promo: " + disp("#promo-row"));
+            println("remove(): " + disp("#removed-node"));
+            println("remove-attr tracker/keep: " + d.querySelector("#attr-node").hasAttribute("data-tracker") + "/" + d.querySelector("#attr-node").getAttribute("data-keep"));
+            println("remove-class ad/keep: " + d.querySelector("#cls-node").classList.contains("ad-blurred") + "/" + d.querySelector("#cls-node").classList.contains("keep-cls"));
+            println("matches-css ad/ok: " + disp("#css-ad") + "/" + disp("#css-ok"));
+            println("matches-attr ad/ok: " + disp("#attr-ad") + "/" + disp("#attr-ok"));
+            println("min-text-length long/short: " + disp("#long-ad") + "/" + disp("#short-ok"));
+            println("xpath ad: " + disp("#xpath-ad"));
+
+            // Dynamically inserted SPA node must be hidden by MutationObserver
+            const late = d.createElement("div");
+            late.className = "dynamic-ad";
+            late.id = "late-ad";
+            late.textContent = "Late Ad injected after load";
+            d.body.appendChild(late);
+            await new Promise((r) => setTimeout(r, 60));
+            println("dynamic mutation ad: " + disp("#late-ad"));
+        } catch (e) {
+            println("ERROR: " + e + " " + (e && e.stack));
+        } finally {
+            internals.setContentBlockers("");
+            internals.setContentBlockingEnabled(true);
+            internals.signalTestIsDone(lines.join("\n") + "\n");
+        }
+    })();
+</script>
+</body>

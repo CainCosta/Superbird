@@ -1,0 +1,12 @@
+pure-style bg: rgb(1, 2, 3)
+upward(1) sponsored: none
+upward(1) organic: block
+upward(sel) promo: none
+remove(): REMOVED
+remove-attr tracker/keep: false/ok
+remove-class ad/keep: false/true
+matches-css ad/ok: none/block
+matches-attr ad/ok: none/block
+min-text-length long/short: none/block
+xpath ad: none
+dynamic mutation ad: none
