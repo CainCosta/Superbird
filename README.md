@@ -1,42 +1,70 @@
 # Superbird
 
-Superbird is a modular fork of the [Ladybird](https://github.com/LadybirdBrowser/ladybird) web browser with pick-and-choose power features you can enable or disable anytime. It runs safely side-by-side with stock Ladybird using its own app identity, profile directory, IPC namespace, and settings.
+A modular fork of the [Ladybird](https://github.com/LadybirdBrowser/ladybird) browser with pick-and-choose power features you can turn on or off anytime.
 
-## Current Features
+Superbird runs safely side-by-side with stock Ladybird using its own app bundle, profile directory, and settings — with upstream auto-updates disabled so it never overwrites itself.
 
-### Core & Coexistence
-- **Side-by-side with stock Ladybird:** Dedicated `Superbird.app` / `org.superbird.Superbird` bundle, isolated profile root (`~/Library/Application Support/Superbird` on macOS, `~/.local/share/Superbird` & `~/.config/Superbird` on Linux), separate Mach bootstrap / IPC names, and Superbird's own app icon and logomark.
-- **Modular architecture & unified Settings hub:** Toggle every feature on or off at runtime in `about:settings` → **Superbird** (disabled modules leave no UI chrome behind), configure per-module options and custom keyboard shortcuts, or strip modules at build time with `-DSUPERBIRD_MODULE_<NAME>=OFF`.
-- **Upstream auto-updates disabled:** Stock Ladybird update checks and Sparkle are turned off so Superbird never overwrites itself with stock Ladybird.
+![Superbird with Tree-Style Vertical Tabs, color-coded branches, pinned tabs, and Workspaces](docs/screenshots/hero.png)
 
-### Shipped Modules
-- **Tree-Style Vertical Tabs:** Collapsible tab branches with descendant count badges, 3-zone drag-and-drop nesting and reordering, multi-select and branch actions (unload, close, move branch to new window), customizable parent-tab close policies, inline sidebar quick-filter, inherited branch color tags, and sidecar SQLite persistence (`TreeTabs.db`) across restarts.
-- **Command Palette (`Cmd/Ctrl+K` or `F2`):** Centered floating palette with live fuzzy search across open tabs (with workspace and branch context), bookmarks, history, browser and Superbird module actions, inline `=` math evaluation, and direct URL navigation or search.
-- **Reader View (`Ctrl+Cmd+R` on macOS / `Ctrl+Alt+R` on Linux, or address-bar icon):** Extracts articles into a clean, script-free overlay without modifying or losing scroll position on the underlying page, with controls for font family (Serif / Sans / Mono), font size, line height, column width, and Light / Sepia / Dark / System themes.
-- **Workspaces (`Cmd/Ctrl+1–9`, tabs via `Cmd/Ctrl+Shift+1–9`):** Partition a window's tabs into named spaces with icons and accent tints, switch via the sidebar footer, toolbar pill, or Command Palette, move tabs between workspaces, keep pinned tabs global, and persist state in a sidecar `Workspaces.db` (works with both Tree Tabs and stock tabs).
-- **Split View (Tab Tiling):** Tile 2–4 tabs side-by-side, stacked, or in a grid inside one window via the tab context menu, Command Palette, or dragging a tab to a page edge, with per-pane headers, accent focus border, pane swapping, and clean collapse when closing a tiled tab.
-- **Glance (Quick Link Peek):** Preview any link via `Alt/Opt+Click` or right-click → *Peek in Glance* in a floating sheet without cluttering your tab bar, with one-click **Open as Tab** (nested under the opener when Tree Tabs is enabled), **Copy URL**, and `Esc`/backdrop dismiss.
-- **uBO-compatible Content Blocking:** Built on `adblock-rust` with 9 default-enabled filter lists (uBO's 7 default lists + EasyList & EasyPrivacy), `! Expires:` / `! Diff-Expires:` auto-refresh, `!#if` preprocessing, trust-isolated bundles, document-start scriptlet injection across frames, `$redirect`, `$removeparam`, `$csp`, and WebSocket blocking, procedural & action cosmetic filtering, per-site cosmetic filtering toggle in Site Settings, `SBCE0001` binary snapshot cache, opt-in filtering logger, and a live switch between **uBO-compatible** and **Default Ladybird** engines.
+## Features
 
-## Upcoming Features (Wave 2+)
+### Tree-Style Vertical Tabs
+Keep dozens of tabs manageable in a collapsible tree. Nest child tabs automatically as you browse, tag branches with colors, collapse subtrees with descendant counts, filter tabs inline, and keep pinned tabs in a compact grid at the top.
 
-See [ROADMAP.md](ROADMAP.md) for the full roadmap and design docs under `docs/design/`.
+### Workspaces
+Separate your browsing into named, color-coded spaces (like Engineering, Research, Design, or Personal) without opening extra windows. Switch with the sidebar bar, the Command Palette, or `Cmd/Ctrl+1–9` (`Cmd/Ctrl+Shift+1–9` switches tabs). Pinned tabs stay visible across every workspace.
 
-- Compact / auto-hide toolbar mode
-- Persistent web panels and local Markdown scratchpad
-- Auto-archive inactive tabs
-- Named session snapshots and export
-- Vim mode and keyboard link hints
-- Per-site custom styles (boosts) and command chains
+![Workspaces switching between separate tab trees while keeping pinned tabs global](docs/screenshots/workspaces.png)
+
+### Split View
+Tile 2 to 4 tabs side by side, stacked, or in a grid inside one window. Split from a tab's context menu, the Command Palette, or by dragging a tab to any edge of the page.
+
+![Three-pane Split View tiling documentation, GitHub, and reference pages](docs/screenshots/split-view.png)
+
+### Command Palette
+Press `Cmd/Ctrl+K` (or `F2`) to fuzzy-search open tabs across every workspace and branch, bookmarks, history, and browser commands — or type `=` to evaluate quick math inline.
+
+![Command Palette fuzzy-searching tabs across workspaces and browser actions](docs/screenshots/command-palette.png)
+
+### Reader View
+Read articles as clean, script-free text without changing or losing your place on the original page. Trigger it from the address-bar icon or with `Ctrl+Cmd+R` (macOS) / `Ctrl+Alt+R` (Linux), and adjust font, size, line spacing, column width, and theme on the fly.
+
+![Reader View displaying a clean serif article with floating typography controls](docs/screenshots/reader-view.png)
+
+### Glance
+`Alt/Opt+Click` any link (or right-click → **Peek in Glance**) to preview it in a floating sheet without cluttering your tab tree. Click **Open as Tab** to keep it, or press `Esc` to dismiss.
+
+![Glance floating sheet previewing a linked Wikipedia article over Hacker News](docs/screenshots/glance.png)
+
+### uBO-Compatible Content Blocking
+Built on `adblock-rust` with 9 filter lists enabled out of the box (uBO's default lists plus EasyList and EasyPrivacy), auto-refreshing subscriptions, scriptlets, cosmetic filtering, and a live switch between the uBO-compatible blocker and Ladybird's default engine.
+
+![Content blocking settings showing the active uBO-compatible engine and default filter lists](docs/screenshots/content-blocking.png)
+
+### Modular by Design
+Every feature lives behind its own toggle in `about:settings#superbird`. Turn a module off and it leaves zero UI clutter behind — or strip modules out at compile time with `-DSUPERBIRD_MODULE_<NAME>=OFF`. You can also configure per-module options and custom keyboard shortcuts from the same page.
+
+![Superbird modular settings hub with live toggles for each feature](docs/screenshots/settings-superbird.png)
 
 ## Quick Start
 
 ```sh
 git clone https://github.com/CainCosta/Superbird.git && cd Superbird
-make setup        # brew deps, upstream submodule, Rust toolchain, git hooks, apply patches
-make run          # build + launch Superbird
-make test         # fast C++23, Rust, Node, and settings JS checks
+make setup        # install dependencies, upstream submodule, Rust toolchain, and patches
+make run          # build and launch Superbird
+make test         # run fast unit and settings checks
 make install      # build and install portable Superbird.app into /Applications (macOS)
 ```
 
-For architecture details, patch workflow, module development, and upstream rebasing (`make test-rebase` / `scripts/rebase-upstream.sh`), see [DEVELOPING.md](DEVELOPING.md).
+For architecture notes, patch workflow, module development, and upstream rebasing, see [DEVELOPING.md](DEVELOPING.md).
+
+## What's Next
+
+See [ROADMAP.md](ROADMAP.md) for the full plan and `docs/design/` for design specs.
+
+- Compact / auto-hide toolbar mode
+- Persistent web panels and a local Markdown scratchpad
+- Auto-archive for inactive tabs
+- Named session snapshots and export
+- Vim mode and keyboard link hints
+- Per-site custom styles (boosts) and command chains
