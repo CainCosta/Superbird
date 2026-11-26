@@ -10,31 +10,36 @@ Cmd/Ctrl+1-9 do the same unless Superbird Workspaces takes them for
 switching workspaces. The All Tabs popover also leaves hidden tabs out.
 
 diff --git a/UI/Qt/BrowserWindow.cpp b/UI/Qt/BrowserWindow.cpp
-index dd3d8f2d..20f6e514 100644
+index a3bfaa779..228248faf 100644
 --- a/UI/Qt/BrowserWindow.cpp
 +++ b/UI/Qt/BrowserWindow.cpp
-@@ -516,17 +516,35 @@ void BrowserWindow::initialize_application_actions()
-     addAction(application.reset_zoom_action());
-     addAction(application.quit_action());
+@@ -523,18 +523,38 @@ void BrowserWindow::initialize_application_actions()
+     tab_selection_modifiers.append(Qt::AltModifier);
+ #endif
  
--    for (int i = 0; i < 8; ++i) {
--        new QShortcut(QKeySequence(Qt::CTRL | static_cast<Qt::Key>(Qt::Key_1 + i)), this, [this, i]() {
--            if (m_tabs_container->count() > 1)
--                m_tabs_container->set_current_index(min(i, m_tabs_container->count() - 1));
--        });
-+    // Superbird: Cmd/Ctrl+Shift+1-9 select a tab by its number, and so do Cmd/Ctrl+1-9 unless a Superbird module
-+    //            (Workspaces) takes them.
+-    for (auto modifier : tab_selection_modifiers) {
+-        for (int i = 0; i < 8; ++i) {
+-            new QShortcut(QKeySequence(modifier | static_cast<Qt::Key>(Qt::Key_1 + i)), this, [this, i]() {
+-                if (m_tabs_container->count() > 1)
+-                    m_tabs_container->set_current_index(min(i, m_tabs_container->count() - 1));
+-            });
++    // Superbird: Cmd/Ctrl+Shift+1-9 select a tab by its number, and so do Cmd/Ctrl+1-9 (and Alt+1-9 on Linux)
++    //            unless a Superbird module (Workspaces) takes the plain shortcuts.
 +    for (int i = 0; i < 9; ++i) {
 +        auto key = static_cast<Qt::Key>(Qt::Key_1 + i);
 +        new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | key), this, [this, i]() { select_tab_by_number(i); });
-+        m_plain_tab_number_shortcuts.append(new QShortcut(QKeySequence(Qt::CTRL | key), this, [this, i]() { select_tab_by_number(i); }));
-     }
++        for (auto modifier : tab_selection_modifiers) {
++            auto* shortcut = new QShortcut(QKeySequence(modifier | key), this, [this, i]() { select_tab_by_number(i); });
++            if (modifier == Qt::ControlModifier)
++                m_plain_tab_number_shortcuts.append(shortcut);
+         }
++    }
 +}
  
--    new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_9), this, [this]() {
--        if (m_tabs_container->count() > 1)
--            m_tabs_container->set_current_index(m_tabs_container->count() - 1);
--    });
+-        new QShortcut(QKeySequence(modifier | Qt::Key_9), this, [this]() {
+-            if (m_tabs_container->count() > 1)
+-                m_tabs_container->set_current_index(m_tabs_container->count() - 1);
+-        });
 +void BrowserWindow::select_tab_by_number(int number)
 +{
 +    // Superbird: Only the tabs that show count, so a tab another workspace hides is never picked. Nine is the last tab.
@@ -54,12 +59,11 @@ index dd3d8f2d..20f6e514 100644
 +    for (auto& shortcut : m_plain_tab_number_shortcuts) {
 +        if (shortcut)
 +            shortcut->setEnabled(enabled);
-+    }
+     }
  }
  
- void BrowserWindow::initialize_application_menu()
 diff --git a/UI/Qt/BrowserWindow.h b/UI/Qt/BrowserWindow.h
-index d712aa68..a287ec72 100644
+index e91cefbbd..9382d7e00 100644
 --- a/UI/Qt/BrowserWindow.h
 +++ b/UI/Qt/BrowserWindow.h
 @@ -29,6 +29,7 @@
@@ -81,7 +85,7 @@ index d712aa68..a287ec72 100644
      WindowToolbar& toolbar() const { return m_tabs_container->toolbar(); }
      BookmarksBar& bookmarks_bar() const { return m_tabs_container->bookmarks_bar(); }
      // Closes a tab that isn't worth reopening, such as an empty tab that other tabs took the place of.
-@@ -349,6 +354,8 @@ private:
+@@ -350,6 +355,8 @@ private:
      WebView::IsPrivate m_is_private { WebView::IsPrivate::No };
  
      TabWidget* m_tabs_container { nullptr };
@@ -89,12 +93,12 @@ index d712aa68..a287ec72 100644
 +    Vector<QPointer<QShortcut>> m_plain_tab_number_shortcuts;
      NonnullOwnPtr<Superbird::WindowHost> m_superbird;
      Tab* m_current_tab { nullptr };
-     Array<QPointer<PageCard>, 2> m_page_cards;
+     Array<QPointer<PageCard>, 3> m_page_cards;
 diff --git a/UI/Qt/TabBar.cpp b/UI/Qt/TabBar.cpp
-index 354dfea2..046d019b 100644
+index dda0b5186..0713b3154 100644
 --- a/UI/Qt/TabBar.cpp
 +++ b/UI/Qt/TabBar.cpp
-@@ -4791,6 +4791,9 @@ void TabWidget::update_all_tabs_entries()
+@@ -4862,6 +4862,9 @@ void TabWidget::update_all_tabs_entries()
      Vector<AllTabsPopover::Entry> entries;
      entries.ensure_capacity(count());
      for (int index = 0; index < count(); ++index) {

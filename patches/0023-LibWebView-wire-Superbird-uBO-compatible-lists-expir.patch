@@ -6,7 +6,7 @@ Subject: [PATCH] LibWebView: wire Superbird uBO-compatible lists, expiry,
 
 
 diff --git a/Base/res/ladybird/about-pages/welcome.js b/Base/res/ladybird/about-pages/welcome.js
-index 5d36dc4b..c3fafd3c 100644
+index 5d36dc4bf..c3fafd3ca 100644
 --- a/Base/res/ladybird/about-pages/welcome.js
 +++ b/Base/res/ladybird/about-pages/welcome.js
 @@ -179,7 +179,17 @@ enableContentBlocking.addEventListener("change", () => {
@@ -29,7 +29,7 @@ index 5d36dc4b..c3fafd3c 100644
      }
  
 diff --git a/Libraries/LibWebView/Application.cpp b/Libraries/LibWebView/Application.cpp
-index 72ac501a..4de681f6 100644
+index 61b4753e4..b85fc8501 100644
 --- a/Libraries/LibWebView/Application.cpp
 +++ b/Libraries/LibWebView/Application.cpp
 @@ -71,6 +71,7 @@
@@ -79,7 +79,7 @@ index 72ac501a..4de681f6 100644
      }
  
  #if defined(LADYBIRD_HAS_UPDATE_CHECK)
-@@ -874,6 +884,11 @@ ByteString Application::content_blocker_list_path(StringView identifier) const
+@@ -871,6 +881,11 @@ ByteString Application::content_blocker_list_path(StringView identifier) const
      return LexicalPath::join(m_content_blocker_lists_directory, ByteString::formatted("{}.txt", identifier)).string();
  }
  
@@ -91,7 +91,7 @@ index 72ac501a..4de681f6 100644
  Optional<UnixDateTime> Application::content_blocker_list_last_updated_at(StringView identifier) const
  {
      if (auto file_status = Core::File::stat(content_blocker_list_path(identifier)); !file_status.is_error())
-@@ -885,7 +900,10 @@ void Application::rebuild_content_blocker_list_paths()
+@@ -882,7 +897,10 @@ void Application::rebuild_content_blocker_list_paths()
  {
      m_browser_options.content_blocker_list_paths = m_explicit_content_blocker_list_paths;
  
@@ -102,7 +102,7 @@ index 72ac501a..4de681f6 100644
          auto path = content_blocker_list_path(list.identifier);
          if (list.enabled && FileSystem::is_regular_file(path))
              m_browser_options.content_blocker_list_paths.append(move(path));
-@@ -895,40 +913,81 @@ void Application::rebuild_content_blocker_list_paths()
+@@ -892,40 +910,81 @@ void Application::rebuild_content_blocker_list_paths()
  ErrorOr<bool> Application::load_content_blocker_lists()
  {
      auto custom_filters = m_settings->custom_content_blocker_filters();
@@ -210,7 +210,7 @@ index 72ac501a..4de681f6 100644
  
      if (m_content_blocker_list_buffer.has_value() && m_content_blocker_list_buffer->bytes() == blocker_list_buffer.bytes())
          return false;
-@@ -944,17 +1003,50 @@ void Application::start_content_blocker_list_update(ContentBlockerListUpdateTrig
+@@ -941,17 +1000,51 @@ void Application::start_content_blocker_list_update(ContentBlockerListUpdateTrig
      if (content_blocker_list_update_in_progress() && !requested_identifier.has_value())
          return;
  
@@ -234,7 +234,8 @@ index 72ac501a..4de681f6 100644
 +        m_pending_content_blocker_list_updates.append({ list.identifier, list.name, *list.url, move(path), trigger });
 +    }
 +
-+    if (ubo_mode && (!requested_identifier.has_value() || *requested_identifier == SuperbirdContentBlocking::resources_update_identifier)) {
++    bool has_enabled_list = any_of(m_settings->content_blocker_lists(), [](auto const& list) { return list.enabled; });
++    if (ubo_mode && ((has_enabled_list && !requested_identifier.has_value()) || requested_identifier == SuperbirdContentBlocking::resources_update_identifier)) {
 +        if (auto resources_url = SuperbirdContentBlocking::ubo_resources_url(); resources_url.has_value()) {
 +            bool already_active = m_active_content_blocker_list_update.has_value()
 +                && m_active_content_blocker_list_update->identifier == SuperbirdContentBlocking::resources_update_identifier;
@@ -263,7 +264,7 @@ index 72ac501a..4de681f6 100644
      }
  
      if (!m_active_content_blocker_list_update.has_value())
-@@ -964,6 +1056,8 @@ void Application::start_content_blocker_list_update(ContentBlockerListUpdateTrig
+@@ -961,6 +1054,8 @@ void Application::start_content_blocker_list_update(ContentBlockerListUpdateTrig
  void Application::start_next_content_blocker_list_update()
  {
      m_pending_content_blocker_list_updates.remove_all_matching([&](auto const& update) {
@@ -272,7 +273,7 @@ index 72ac501a..4de681f6 100644
          auto list = m_settings->content_blocker_list(update.identifier);
          return !list.has_value() || !list->enabled;
      });
-@@ -1097,7 +1191,7 @@ void Application::finish_current_content_blocker_list_update()
+@@ -1094,7 +1189,7 @@ void Application::finish_current_content_blocker_list_update()
  
  ErrorOr<void> Application::save_content_blocker_list(ByteString const& path, ReadonlyBytes contents)
  {
@@ -281,7 +282,7 @@ index 72ac501a..4de681f6 100644
      auto temporary_path = ByteString::formatted("{}.tmp", path);
      {
          auto file = TRY(Core::File::open(temporary_path, Core::File::OpenMode::Write));
-@@ -3256,6 +3350,17 @@ void Application::content_blocker_settings_changed(Badge<ApplicationSettingsObse
+@@ -3279,6 +3374,17 @@ void Application::content_blocker_settings_changed(Badge<ApplicationSettingsObse
      apply_content_blocker_settings();
  }
  
@@ -300,10 +301,10 @@ index 72ac501a..4de681f6 100644
  {
      rebuild_content_blocker_list_paths();
 diff --git a/Libraries/LibWebView/Application.h b/Libraries/LibWebView/Application.h
-index c405b534..7a452078 100644
+index 6d2da3c6e..51350c862 100644
 --- a/Libraries/LibWebView/Application.h
 +++ b/Libraries/LibWebView/Application.h
-@@ -203,6 +203,7 @@ public:
+@@ -210,6 +210,7 @@ public:
      bool has_content_blocking_rules() const;
      void apply_content_blocking_policy(WebContentPage&);
      void content_blocker_settings_changed(Badge<ApplicationSettingsObserver>);
@@ -311,7 +312,7 @@ index c405b534..7a452078 100644
  
      bool content_blocker_list_update_in_progress() const;
      void update_content_blocker_lists(Badge<SettingsUI>);
-@@ -659,6 +660,8 @@ private:
+@@ -667,6 +668,8 @@ private:
      };
      Vector<ByteString> m_explicit_content_blocker_list_paths;
      ByteString m_content_blocker_lists_directory;
@@ -321,7 +322,7 @@ index c405b534..7a452078 100644
      Optional<PendingContentBlockerListUpdate> m_active_content_blocker_list_update;
      ByteBuffer m_content_blocker_list_update_payload;
 diff --git a/Libraries/LibWebView/CMakeLists.txt b/Libraries/LibWebView/CMakeLists.txt
-index 008e7d92..a7ec47e6 100644
+index c22b4e1aa..097366182 100644
 --- a/Libraries/LibWebView/CMakeLists.txt
 +++ b/Libraries/LibWebView/CMakeLists.txt
 @@ -79,6 +79,7 @@ set(SOURCES
@@ -333,7 +334,7 @@ index 008e7d92..a7ec47e6 100644
      TestSpellChecker.cpp
      TestTranslator.cpp
 diff --git a/Libraries/LibWebView/Settings.cpp b/Libraries/LibWebView/Settings.cpp
-index 834d97fb..422ca26c 100644
+index 9fbeaed18..525571a95 100644
 --- a/Libraries/LibWebView/Settings.cpp
 +++ b/Libraries/LibWebView/Settings.cpp
 @@ -21,6 +21,7 @@
@@ -344,7 +345,7 @@ index 834d97fb..422ca26c 100644
  #include <LibWebView/Utilities.h>
  
  namespace WebView {
-@@ -874,6 +875,7 @@ void Settings::reset_to_defaults()
+@@ -883,6 +884,7 @@ void Settings::reset_to_defaults()
      add_list("listeFR"sv, "Liste FR"sv, "Blocks advertising on French websites."sv, "https://easylist-downloads.adblockplus.org/liste_fr.txt"sv, ListCategory::Language);
      add_list("roList"sv, "ROList"sv, "Blocks advertising on Romanian websites."sv, "https://zoso.ro/pages/rolist.txt"sv, ListCategory::Language);
      add_list("ruAdList"sv, "RU AdList"sv, "Blocks advertising on Russian and Ukrainian websites."sv, "https://easylist-downloads.adblockplus.org/ruadlist.txt"sv, ListCategory::Language);
@@ -353,10 +354,10 @@ index 834d97fb..422ca26c 100644
  
  JsonValue Settings::serialize_json() const
 diff --git a/Libraries/LibWebView/Settings.h b/Libraries/LibWebView/Settings.h
-index ba054c0b..411fdc83 100644
+index d4b0630ea..51cbdf33a 100644
 --- a/Libraries/LibWebView/Settings.h
 +++ b/Libraries/LibWebView/Settings.h
-@@ -276,11 +276,11 @@ struct WEBVIEW_API SettingsData {
+@@ -278,11 +278,11 @@ struct WEBVIEW_API SettingsData {
      CrashReportSending m_crash_report_sending { CrashReportSending::AskMe };
  
      bool m_background_networking_enabled { true };
@@ -371,7 +372,7 @@ index ba054c0b..411fdc83 100644
      Vector<ContentBlockerList> m_content_blocker_lists;
      String m_custom_content_blocker_filters;
 diff --git a/Tests/LibWebView/TestBackgroundNetworking.cpp b/Tests/LibWebView/TestBackgroundNetworking.cpp
-index 94bf41e9..c80e7584 100644
+index 94bf41e94..c80e75841 100644
 --- a/Tests/LibWebView/TestBackgroundNetworking.cpp
 +++ b/Tests/LibWebView/TestBackgroundNetworking.cpp
 @@ -12,6 +12,7 @@
@@ -478,3 +479,35 @@ index 94bf41e9..c80e7584 100644
      EXPECT(settings.content_blocker_list("custom-list"sv).has_value());
      EXPECT(settings.content_blocker_list("local-list"sv).has_value());
      EXPECT(settings.content_blocker_list("easyList"sv)->built_in);
+diff --git a/Tests/LibWebView/test-webdriver-settings-changes.py b/Tests/LibWebView/test-webdriver-settings-changes.py
+index b093eb988..78c8d3eb2 100644
+--- a/Tests/LibWebView/test-webdriver-settings-changes.py
++++ b/Tests/LibWebView/test-webdriver-settings-changes.py
+@@ -36,7 +36,26 @@ def run_test(webdriver_binary):
+     with tempfile.TemporaryDirectory() as directory:
+         config = Path(directory) / "config"
+         config.mkdir()
+-        (config / "Settings.json").write_text(json.dumps({"contentBlockers": {"enabled": True}}))
++        (config / "Settings.json").write_text(
++            json.dumps(
++                {
++                    "contentBlockers": {
++                        "enabled": True,
++                        "builtInLists": {
++                            "easyList": False,
++                            "easyPrivacy": False,
++                            "uboFilters": False,
++                            "uboBadware": False,
++                            "uboPrivacy": False,
++                            "uboUnbreak": False,
++                            "uboQuickFixes": False,
++                            "peterLowe": False,
++                            "urlhaus": False,
++                        },
++                    }
++                }
++            )
++        )
+         process, port = helpers["launch_webdriver"](webdriver_binary, "--headless", "--profile-path", directory)
+         session = None
+         try:

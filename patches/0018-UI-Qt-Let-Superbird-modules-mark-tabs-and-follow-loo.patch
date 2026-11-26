@@ -10,7 +10,7 @@ a tab comes loose from its strip and when it's let go, to show where the
 tab would land.
 
 diff --git a/UI/Qt/Tab.h b/UI/Qt/Tab.h
-index 68123609..30e888b2 100644
+index eebc5492b..4f2d56a6f 100644
 --- a/UI/Qt/Tab.h
 +++ b/UI/Qt/Tab.h
 @@ -150,6 +150,7 @@ public:
@@ -22,7 +22,7 @@ index 68123609..30e888b2 100644
      // The link under the pointer, as the hover label shows it (Superbird Glance opens it on Alt/Option+click).
      QString const& hovered_link() const { return m_hover_text; }
 diff --git a/UI/Qt/TabBar.cpp b/UI/Qt/TabBar.cpp
-index 046d019b..3e4fedf2 100644
+index 0713b3154..4863b55f6 100644
 --- a/UI/Qt/TabBar.cpp
 +++ b/UI/Qt/TabBar.cpp
 @@ -19,6 +19,7 @@
@@ -41,7 +41,7 @@ index 046d019b..3e4fedf2 100644
  static QPointer<TabWidget> s_pending_tab_drop_target;
  static int s_pending_tab_drop_index { -1 };
  // A tab dragged in a window of its own stays in that window's strip, rather than leaving a gap there.
-@@ -1308,6 +1310,15 @@ void TabBar::paintEvent(QPaintEvent*)
+@@ -1326,6 +1328,15 @@ void TabBar::paintEvent(QPaintEvent*)
          auto needs_attention = tab_for_index && tab_for_index->needs_attention() && !is_selected;
          auto favicon_shrink = tab_for_index ? tab_for_index->loading_favicon_shrink() : 0;
          auto favicon_opacity = tab_for_index && !tab_for_index->is_loaded() ? UNLOADED_TAB_FAVICON_OPACITY : 1.0;
@@ -57,7 +57,7 @@ index 046d019b..3e4fedf2 100644
          auto paint_icon = [&](QRect const& icon_rect, Optional<QRect> favicon_clip = {}) {
              if (ring_opacity > 0) {
                  painter.save();
-@@ -2344,12 +2355,16 @@ void TabBar::drag_tab_loose(Tab& tab, QPixmap card)
+@@ -2345,12 +2356,16 @@ void TabBar::drag_tab_loose(Tab& tab, QPixmap card)
          QApplication::instance()->installEventFilter(&cancellation_filter);
      });
  
@@ -75,10 +75,10 @@ index 046d019b..3e4fedf2 100644
      // NB: On Wayland, a drag dropped where no window takes it ends just as one canceled with Escape does, and the
      //     compositor keeps the Escape key to itself. A tab dropped away from every tab strip is detached, as it is
 diff --git a/UI/Qt/TabBar.h b/UI/Qt/TabBar.h
-index 1a18d194..9ef4ac08 100644
+index 6e06f17f2..b599ad94e 100644
 --- a/UI/Qt/TabBar.h
 +++ b/UI/Qt/TabBar.h
-@@ -85,6 +85,9 @@ public:
+@@ -88,6 +88,9 @@ public:
      // Superbird Split View: offered a tab dropped away from every tab strip, before it would open in a window of its
      // own. Returns whether it took the tab.
      static Function<bool(Tab&, QPoint global_position)> on_tab_dropped_outside_strips;

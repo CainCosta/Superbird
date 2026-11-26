@@ -730,7 +730,7 @@ void TreeTabView::paint_tree_row(QPainter& painter, int row_index, QRect const& 
         title_font.setWeight(QFont::Medium);
     painter.setFont(title_font);
 
-    QColor title_color = is_active ? colors.text : colors.row_title;
+    QColor title_color = ChromeStyle::window_activity(*this) == ChromeStyle::WindowActivity::Inactive ? colors.muted : colors.text;
     if (!tab->is_loaded())
         title_color.setAlphaF(0.6);
     painter.setPen(title_color);

@@ -5,10 +5,10 @@ Subject: [PATCH] UI/Qt: Add TabWidget sidebar seam for tree-style tabs
 
 
 diff --git a/UI/Qt/TabBar.cpp b/UI/Qt/TabBar.cpp
-index 4b6ee134..468e3dd4 100644
+index 2c4dd3eab..c1bfeac07 100644
 --- a/UI/Qt/TabBar.cpp
 +++ b/UI/Qt/TabBar.cpp
-@@ -3624,6 +3624,26 @@ void TabWidget::set_vertical_tabs_enabled(bool enabled)
+@@ -3686,6 +3686,26 @@ void TabWidget::set_vertical_tabs_enabled(bool enabled)
      rebuild_layout();
  }
  
@@ -35,9 +35,9 @@ index 4b6ee134..468e3dd4 100644
  void TabWidget::set_everything_in_sidebar(bool everything_in_sidebar)
  {
      if (m_everything_in_sidebar == everything_in_sidebar)
-@@ -4567,6 +4587,9 @@ void TabWidget::rebuild_layout_for_horizontal_tabs()
+@@ -4633,6 +4653,9 @@ void TabWidget::rebuild_layout_for_horizontal_tabs()
      if (window_controls_on_left())
-         m_tab_bar_row_layout->addWidget(m_window_controls, 0, use_native_macos_window_controls() ? Qt::AlignVCenter : Qt::AlignTop);
+         m_tab_bar_row_layout->addWidget(m_window_controls, 0, use_native_macos_window_controls() ? Qt::AlignVCenter : Qt::AlignBottom);
      add_ladybird_buttons();
 +    if (m_tree_tabs_widget)
 +        m_tree_tabs_widget->hide();
@@ -45,7 +45,7 @@ index 4b6ee134..468e3dd4 100644
      m_tab_bar_row_layout->addWidget(m_tab_bar, 0, Qt::AlignBottom);
      m_tab_bar_row_layout->addSpacing(new_tab_button_room);
      m_tab_bar_row_layout->addStretch(1);
-@@ -4973,9 +4996,20 @@ void TabWidget::rebuild_layout_for_vertical_tabs()
+@@ -5044,9 +5067,20 @@ void TabWidget::rebuild_layout_for_vertical_tabs()
          delete top_row_layout;
      }
  
@@ -69,7 +69,7 @@ index 4b6ee134..468e3dd4 100644
  
      // The toolbar's other buttons sit at the bottom of the sidebar that holds it.
      if (m_vertical_tabs_expanded && toolbar_is_in_sidebar() && !toggle_moves_toolbar()) {
-@@ -5279,6 +5313,8 @@ void TabWidget::update_tab_layout()
+@@ -5353,6 +5387,8 @@ void TabWidget::update_tab_layout()
          update_vertical_tabs_overlay_geometry();
          m_vertical_tabs_content_layout->activate();
          m_tab_bar->set_available_width(vertical_tabs_tab_width());
@@ -79,10 +79,10 @@ index 4b6ee134..468e3dd4 100644
          update_vertical_tabs_content_separator();
          return;
 diff --git a/UI/Qt/TabBar.h b/UI/Qt/TabBar.h
-index b525ca92..434ed5b8 100644
+index e07053ad8..f5ecb1371 100644
 --- a/UI/Qt/TabBar.h
 +++ b/UI/Qt/TabBar.h
-@@ -349,6 +349,10 @@ public:
+@@ -362,6 +362,10 @@ public:
      void window_control_buttons_changed();
      void update_window_button_icons();
      void set_vertical_tabs_enabled(bool);
@@ -93,7 +93,7 @@ index b525ca92..434ed5b8 100644
      void set_everything_in_sidebar(bool);
      void set_vertical_tabs_expanded(bool);
      void set_vertical_tabs_expand_on_hover(bool);
-@@ -449,6 +453,8 @@ private:
+@@ -462,6 +466,8 @@ private:
      void accept_tab_drop(QDropEvent*, int index);
  
      TabBar* m_tab_bar { nullptr };

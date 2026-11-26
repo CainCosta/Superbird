@@ -9,7 +9,7 @@ step on CI. Now its output is shown and the bundle keeps app_icon.icns.
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
 diff --git a/UI/CMakeLists.txt b/UI/CMakeLists.txt
-index b93e108b..465954cb 100644
+index b93e108b3..465954cb4 100644
 --- a/UI/CMakeLists.txt
 +++ b/UI/CMakeLists.txt
 @@ -88,18 +88,14 @@ function(create_ladybird_bundle target_name)

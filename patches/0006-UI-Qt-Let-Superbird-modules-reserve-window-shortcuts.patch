@@ -6,7 +6,7 @@ Subject: [PATCH] UI/Qt: Let Superbird modules reserve window shortcuts over
 
 
 diff --git a/UI/Qt/WebContentView.cpp b/UI/Qt/WebContentView.cpp
-index a9989b17..4a510d19 100644
+index eb28076b8..fa81d1af0 100644
 --- a/UI/Qt/WebContentView.cpp
 +++ b/UI/Qt/WebContentView.cpp
 @@ -51,6 +51,7 @@
@@ -17,7 +17,7 @@ index a9989b17..4a510d19 100644
  #include <UI/Qt/SystemAppearance.h>
  #include <UI/Qt/Theme.h>
  #include <UI/Qt/WebContentView.h>
-@@ -773,6 +774,10 @@ static Web::UIEvents::KeyCode get_keycode_from_qt_key_event(QKeyEvent const& eve
+@@ -783,6 +784,10 @@ static Web::UIEvents::KeyCode get_keycode_from_qt_key_event(QKeyEvent const& eve
  
  static bool is_browser_reserved_shortcut(QKeyEvent const& event)
  {

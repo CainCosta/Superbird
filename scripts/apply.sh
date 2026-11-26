@@ -20,46 +20,69 @@ BASE_FILE="$UPSTREAM_GIT_DIR/superbird-base"
 MANIFEST_FILE="$UPSTREAM_GIT_DIR/superbird-overlay-manifest"
 EXCLUDE_FILE="$UPSTREAM_GIT_DIR/info/exclude"
 
-# Determine the pinned submodule commit from the superproject (fallback to current HEAD if untracked yet)
-PINNED_SHA="$(git -C "$ROOT_DIR" ls-tree HEAD upstream 2>/dev/null | awk '{print $3}' || true)"
-if [[ -z "$PINNED_SHA" ]]; then
-    if [[ -f "$BASE_FILE" ]]; then
-        PINNED_SHA="$(cat "$BASE_FILE")"
-    else
-        PINNED_SHA="$(git -C "$UPSTREAM_DIR" rev-parse HEAD)"
-    fi
+OVERLAY_ONLY=0
+if [[ "${1:-}" == "--overlay-only" ]]; then
+    OVERLAY_ONLY=1
 fi
 
-# Allow overriding base commit (used by sync-upstream.sh)
-BASE_SHA="${SUPERBIRD_BASE_SHA:-$PINNED_SHA}"
-
-echo "[superbird] Resetting upstream/ to base commit ${BASE_SHA:0:12}..."
-"$ROOT_DIR/scripts/reset-upstream.sh" "$BASE_SHA"
-
-echo "$BASE_SHA" > "$BASE_FILE"
-
-# Create/reset local superbird branch at BASE_SHA
-git -C "$UPSTREAM_DIR" checkout -q -B superbird "$BASE_SHA"
-
-# Apply patches in sorted order
-shopt -s nullglob
-PATCHES=("$PATCHES_DIR"/*.patch)
-shopt -u nullglob
-
-if [[ ${#PATCHES[@]} -gt 0 ]]; then
-    for patch in "${PATCHES[@]}"; do
-        echo "[superbird] Applying $(basename "$patch")..."
-        if ! git -C "$UPSTREAM_DIR" am --3way --keep-cr "$patch"; then
-            echo "" >&2
-            echo "[superbird] Patch failed: $(basename "$patch")" >&2
-            echo "  Resolve conflicts in $UPSTREAM_DIR, then run:" >&2
-            echo "    git -C upstream am --continue" >&2
-            echo "    ./scripts/export-patches.sh" >&2
-            exit 1
+if [[ "$OVERLAY_ONLY" == "0" ]]; then
+    # Determine the pinned submodule commit from the superproject (fallback to current HEAD if untracked yet)
+    PINNED_SHA="$(git -C "$ROOT_DIR" ls-tree HEAD upstream 2>/dev/null | awk '{print $3}' || true)"
+    if [[ -z "$PINNED_SHA" ]]; then
+        if [[ -f "$BASE_FILE" ]]; then
+            PINNED_SHA="$(cat "$BASE_FILE")"
+        else
+            PINNED_SHA="$(git -C "$UPSTREAM_DIR" rev-parse HEAD)"
         fi
-    done
+    fi
+
+    # Allow overriding base commit (used by sync-upstream.sh)
+    BASE_SHA="${SUPERBIRD_BASE_SHA:-$PINNED_SHA}"
+
+    echo "[superbird] Resetting upstream/ to base commit ${BASE_SHA:0:12}..."
+    "$ROOT_DIR/scripts/reset-upstream.sh" "$BASE_SHA"
+
+    echo "$BASE_SHA" > "$BASE_FILE"
+
+    # Create/reset local superbird branch at BASE_SHA
+    git -C "$UPSTREAM_DIR" checkout -q -B superbird "$BASE_SHA"
+
+    # Apply patches in sorted order
+    shopt -s nullglob
+    PATCHES=("$PATCHES_DIR"/*.patch)
+    shopt -u nullglob
+
+    if [[ ${#PATCHES[@]} -gt 0 ]]; then
+        for patch in "${PATCHES[@]}"; do
+            echo "[superbird] Applying $(basename "$patch")..."
+            if ! git -C "$UPSTREAM_DIR" am --3way --keep-cr "$patch"; then
+                echo "" >&2
+                echo "[superbird] Patch failed: $(basename "$patch")" >&2
+                echo "  Resolve conflicts in $UPSTREAM_DIR, then run:" >&2
+                echo "    git -C upstream am --continue" >&2
+                echo "    ./scripts/export-patches.sh" >&2
+                exit 1
+            fi
+        done
+    else
+        echo "[superbird] No patches in patches/ yet."
+    fi
 else
-    echo "[superbird] No patches in patches/ yet."
+    # Refresh overlay links in-place (used after `git rebase` finishes in upstream/)
+    PATCHES=()
+    if [[ -f "$MANIFEST_FILE" ]]; then
+        while IFS= read -r rel; do
+            [[ -z "$rel" ]] && continue
+            if [[ -L "$UPSTREAM_DIR/$rel" ]]; then
+                rm -f "$UPSTREAM_DIR/$rel"
+                dir="$(dirname "$UPSTREAM_DIR/$rel")"
+                while [[ "$dir" != "$UPSTREAM_DIR" && -d "$dir" ]]; do
+                    rmdir "$dir" 2>/dev/null || break
+                    dir="$(dirname "$dir")"
+                done
+            fi
+        done < "$MANIFEST_FILE"
+    fi
 fi
 
 # Link overlay directories/files into upstream/ and register them in upstream/.git/info/exclude
@@ -90,6 +113,7 @@ PY
 
 : > "$MANIFEST_FILE"
 EXCLUDE_ENTRIES=()
+COLLISIONS=()
 
 if [[ -d "$OVERLAY_DIR" ]]; then
     # Symlink individual files from overlay/ into upstream/ so CMake/AUTOMOC sees real parent dirs
@@ -97,12 +121,24 @@ if [[ -d "$OVERLAY_DIR" ]]; then
     while IFS= read -r -d '' src; do
         rel="${src#"$OVERLAY_DIR"/}"
         dst="$UPSTREAM_DIR/$rel"
+        if git -C "$UPSTREAM_DIR" ls-files --error-unmatch -- "$rel" >/dev/null 2>&1; then
+            COLLISIONS+=("$rel")
+            continue
+        fi
         mkdir -p "$(dirname "$dst")"
         rm -f "$dst"
         ln -s "$src" "$dst"
         echo "$rel" >> "$MANIFEST_FILE"
         EXCLUDE_ENTRIES+=("/$rel")
     done < <(find "$OVERLAY_DIR" -type f -print0 | sort -z)
+fi
+
+if [[ ${#COLLISIONS[@]} -gt 0 ]]; then
+    echo "" >&2
+    echo "[superbird] ERROR: overlay/ files collide with files tracked by upstream/:" >&2
+    printf '  %s\n' "${COLLISIONS[@]}" >&2
+    echo "  Move the change into patches/ or reconcile with upstream before continuing." >&2
+    exit 1
 fi
 
 if [[ ${#EXCLUDE_ENTRIES[@]} -gt 0 ]]; then
@@ -115,4 +151,8 @@ fi
 
 "$ROOT_DIR/scripts/ensure-applied.sh" --mark
 
-echo "[superbird] Done. Applied ${#PATCHES[@]} patch(es) and linked ${#EXCLUDE_ENTRIES[@]} overlay file(s)."
+if [[ "$OVERLAY_ONLY" == "1" ]]; then
+    echo "[superbird] Done. Refreshed ${#EXCLUDE_ENTRIES[@]} overlay file(s)."
+else
+    echo "[superbird] Done. Applied ${#PATCHES[@]} patch(es) and linked ${#EXCLUDE_ENTRIES[@]} overlay file(s)."
+fi

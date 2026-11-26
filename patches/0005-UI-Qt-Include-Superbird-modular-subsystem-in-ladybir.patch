@@ -5,7 +5,7 @@ Subject: [PATCH] UI/Qt: Include Superbird modular subsystem in ladybird_impl
 
 
 diff --git a/UI/Qt/CMakeLists.txt b/UI/Qt/CMakeLists.txt
-index f26f17c7..b5b947c3 100644
+index f26f17c72..b5b947c32 100644
 --- a/UI/Qt/CMakeLists.txt
 +++ b/UI/Qt/CMakeLists.txt
 @@ -87,6 +87,8 @@ if (NOT APPLE AND NOT WIN32 AND NOT ANDROID)

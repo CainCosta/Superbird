@@ -6,7 +6,7 @@ Subject: [PATCH] Settings: Add Superbird module settings, tree-style tab
 
 
 diff --git a/Base/res/ladybird/about-pages/settings.html b/Base/res/ladybird/about-pages/settings.html
-index bb3ccc09..3c1cbf88 100644
+index 9ab1d87c2..90a80a0a8 100644
 --- a/Base/res/ladybird/about-pages/settings.html
 +++ b/Base/res/ladybird/about-pages/settings.html
 @@ -969,6 +969,7 @@
@@ -54,7 +54,7 @@ index bb3ccc09..3c1cbf88 100644
                          <div class="card-group inline-container control-row hidden">
                              <label for="vertical-tabs-expand-on-hover">
                                  Expand vertical tabs on hover when collapsed
-@@ -1591,6 +1622,54 @@
+@@ -1604,6 +1635,54 @@
                      </div>
                  </div>
              </div>
@@ -109,7 +109,7 @@ index bb3ccc09..3c1cbf88 100644
          </main>
  
          <dialog id="languages-dialog" closedby="any">
-@@ -1783,6 +1862,7 @@
+@@ -1796,6 +1875,7 @@
          <script src="resource://ladybird/about-pages/settings/search.js" type="module"></script>
          <script src="resource://ladybird/about-pages/settings/services.js" type="module"></script>
          <script src="resource://ladybird/about-pages/settings/startup.js" type="module"></script>
@@ -118,7 +118,7 @@ index bb3ccc09..3c1cbf88 100644
  
          <script type="module">
 diff --git a/Base/res/ladybird/about-pages/settings/tabs.js b/Base/res/ladybird/about-pages/settings/tabs.js
-index a9d41841..a2d2f6df 100644
+index a9d418415..a2d2f6df5 100644
 --- a/Base/res/ladybird/about-pages/settings/tabs.js
 +++ b/Base/res/ladybird/about-pages/settings/tabs.js
 @@ -1,5 +1,9 @@
@@ -194,10 +194,10 @@ index a9d41841..a2d2f6df 100644
      TAB_SETTINGS.verticalTabsExpandOnHover = verticalTabsExpandOnHover.checked;
      saveTabSettings();
 diff --git a/Libraries/LibWebView/Settings.cpp b/Libraries/LibWebView/Settings.cpp
-index 5afb3756..32c8be3d 100644
+index b75eeb3d5..88bbc529d 100644
 --- a/Libraries/LibWebView/Settings.cpp
 +++ b/Libraries/LibWebView/Settings.cpp
-@@ -61,9 +61,16 @@ static constexpr auto VERTICAL_TABS_EXPAND_ON_HOVER_KEY = "verticalTabsExpandOnH
+@@ -62,9 +62,16 @@ static constexpr auto VERTICAL_TABS_EXPAND_ON_HOVER_KEY = "verticalTabsExpandOnH
  static constexpr auto VERTICAL_TABS_POSITION_KEY = "verticalTabsPosition"sv;
  static constexpr auto VERTICAL_TABS_EXPANDED_WIDTH_KEY = "verticalTabsExpandedWidth"sv;
  static constexpr auto EVERYTHING_IN_SIDEBAR_KEY = "everythingInSidebar"sv;
@@ -214,7 +214,7 @@ index 5afb3756..32c8be3d 100644
  static constexpr auto BROWSING_BEHAVIOR_KEY = "browsingBehavior"sv;
  static constexpr auto ENABLE_AUTOSCROLL_KEY = "enableAutoscroll"sv;
  static constexpr auto ENABLE_PRIMARY_PASTE_KEY = "enablePrimaryPaste"sv;
-@@ -332,6 +339,50 @@ static constexpr Optional<ColorTheme> color_theme_from_string(StringView theme)
+@@ -341,6 +348,50 @@ static constexpr Optional<ColorTheme> color_theme_from_string(StringView theme)
      return {};
  }
  
@@ -265,7 +265,7 @@ index 5afb3756..32c8be3d 100644
  static constexpr StringView vertical_tabs_position_to_string(VerticalTabsPosition position)
  {
      switch (position) {
-@@ -468,6 +519,9 @@ void Settings::load_from_json(JsonValue const& json_value)
+@@ -477,6 +528,9 @@ void Settings::load_from_json(JsonValue const& json_value)
      if (auto tab_settings = json.get(TAB_SETTINGS_KEY); tab_settings.has_value())
          m_tab_settings = parse_tab_settings(*tab_settings);
  
@@ -275,7 +275,7 @@ index 5afb3756..32c8be3d 100644
      if (auto browsing_behavior = json.get(BROWSING_BEHAVIOR_KEY); browsing_behavior.has_value())
          m_browsing_behavior = parse_browsing_behavior(*browsing_behavior);
  
-@@ -640,6 +694,7 @@ void Settings::replace_with_json(JsonValue const& json, PersistChange persist_ch
+@@ -649,6 +703,7 @@ void Settings::replace_with_json(JsonValue const& json, PersistChange persist_ch
      auto appearance_changed = changed(APPEARANCE_KEY);
      auto content_settings_changed = changed(CONTENT_SETTINGS_KEY);
      auto tab_settings_changed = changed(TAB_SETTINGS_KEY);
@@ -283,7 +283,7 @@ index 5afb3756..32c8be3d 100644
      auto browsing_behavior_changed = changed(BROWSING_BEHAVIOR_KEY);
      auto search_engine_settings_changed = changed(SEARCH_ENGINE_KEY);
      auto autoplay_settings_changed = changed(AUTOPLAY_KEY);
-@@ -668,6 +723,8 @@ void Settings::replace_with_json(JsonValue const& json, PersistChange persist_ch
+@@ -677,6 +732,8 @@ void Settings::replace_with_json(JsonValue const& json, PersistChange persist_ch
              observer.content_settings_changed();
          if (tab_settings_changed)
              observer.tab_settings_changed();
@@ -292,7 +292,7 @@ index 5afb3756..32c8be3d 100644
          if (browsing_behavior_changed)
              observer.browsing_behavior_changed();
          if (search_engine_settings_changed)
-@@ -876,10 +933,21 @@ JsonValue Settings::serialize_json() const
+@@ -886,10 +943,21 @@ JsonValue Settings::serialize_json() const
      if (m_tab_settings.vertical_tabs_expanded_width.has_value())
          tab_settings.set(VERTICAL_TABS_EXPANDED_WIDTH_KEY, *m_tab_settings.vertical_tabs_expanded_width);
      tab_settings.set(EVERYTHING_IN_SIDEBAR_KEY, m_tab_settings.everything_in_sidebar);
@@ -314,7 +314,7 @@ index 5afb3756..32c8be3d 100644
      JsonObject browsing_behavior;
      browsing_behavior.set(ENABLE_AUTOSCROLL_KEY, m_browsing_behavior.enable_autoscroll);
      browsing_behavior.set(ENABLE_PRIMARY_PASTE_KEY, m_browsing_behavior.enable_primary_paste);
-@@ -1301,6 +1369,18 @@ TabSettings Settings::parse_tab_settings(JsonValue const& settings)
+@@ -1313,6 +1381,18 @@ TabSettings Settings::parse_tab_settings(JsonValue const& settings)
          tab_settings.vertical_tabs_expanded_width = *vertical_tabs_expanded_width;
      if (auto everything_in_sidebar = settings.as_object().get_bool(EVERYTHING_IN_SIDEBAR_KEY); everything_in_sidebar.has_value())
          tab_settings.everything_in_sidebar = *everything_in_sidebar;
@@ -333,7 +333,7 @@ index 5afb3756..32c8be3d 100644
      if (auto minutes = settings.as_object().get_integer<u32>(DISCARD_HIDDEN_TABS_AFTER_MINUTES_KEY); minutes.has_value())
          tab_settings.discard_hidden_tabs_after_minutes = *minutes;
      if (auto tab_processes = settings.as_object().get_string(TAB_PROCESSES_KEY); tab_processes.has_value()) {
-@@ -1320,6 +1400,53 @@ void Settings::set_tab_settings(TabSettings tab_settings)
+@@ -1332,6 +1412,53 @@ void Settings::set_tab_settings(TabSettings tab_settings)
          observer.tab_settings_changed();
  }
  
@@ -388,10 +388,10 @@ index 5afb3756..32c8be3d 100644
  {
      if (!settings.is_object())
 diff --git a/Libraries/LibWebView/Settings.h b/Libraries/LibWebView/Settings.h
-index 798e2eee..db75b81e 100644
+index b6d8d8a85..27c532827 100644
 --- a/Libraries/LibWebView/Settings.h
 +++ b/Libraries/LibWebView/Settings.h
-@@ -98,6 +98,17 @@ enum class VerticalTabsPosition : u8 {
+@@ -99,6 +99,17 @@ enum class VerticalTabsPosition : u8 {
      Right,
  };
  
@@ -409,7 +409,7 @@ index 798e2eee..db75b81e 100644
  struct TabSettings {
      bool vertical_tabs_enabled { false };
      bool vertical_tabs_expanded { true };
-@@ -106,6 +117,10 @@ struct TabSettings {
+@@ -107,6 +118,10 @@ struct TabSettings {
      // With vertical tabs, the open sidebar also holds the navigation buttons, the address field and the toolbar's other
      // buttons, and there is no toolbar row. The sidebar is then always on the left.
      bool everything_in_sidebar { false };
@@ -420,7 +420,7 @@ index 798e2eee..db75b81e 100644
      Optional<u16> vertical_tabs_expanded_width;
      // A tab that was hidden for this many minutes is discarded, unless it does something the user would notice. Zero
      // means that tabs are kept however long they are hidden.
-@@ -113,6 +128,18 @@ struct TabSettings {
+@@ -114,6 +129,18 @@ struct TabSettings {
      TabProcesses tab_processes { TabProcesses::PerOrigin };
  };
  
@@ -439,7 +439,7 @@ index 798e2eee..db75b81e 100644
  struct SearchEngineSettings {
      Optional<SearchEngine> engine;
      bool suggestions { false };
-@@ -199,6 +226,7 @@ public:
+@@ -201,6 +228,7 @@ public:
      virtual void appearance_changed() { }
      virtual void content_settings_changed() { }
      virtual void tab_settings_changed() { }
@@ -447,7 +447,7 @@ index 798e2eee..db75b81e 100644
      virtual void browsing_behavior_changed() { }
      virtual void search_engine_settings_changed() { }
      virtual void autoplay_settings_changed() { }
-@@ -228,6 +256,8 @@ struct WEBVIEW_API SettingsData {
+@@ -230,6 +258,8 @@ struct WEBVIEW_API SettingsData {
      Appearance m_appearance;
      ContentSettings m_content_settings;
      TabSettings m_tab_settings;
@@ -456,7 +456,7 @@ index 798e2eee..db75b81e 100644
      BrowsingBehavior m_browsing_behavior;
  
      SearchEngineSettings m_search_engine_settings;
-@@ -324,6 +354,13 @@ public:
+@@ -326,6 +356,13 @@ public:
      TabSettings const& tab_settings() const { return m_tab_settings; }
      void set_tab_settings(TabSettings);
  
@@ -471,7 +471,7 @@ index 798e2eee..db75b81e 100644
      BrowsingBehavior browsing_behavior() const;
      void set_browsing_behavior(BrowsingBehavior);
 diff --git a/Libraries/LibWebView/WebUI/SettingsUI.cpp b/Libraries/LibWebView/WebUI/SettingsUI.cpp
-index 6969e29d..022239b4 100644
+index 6969e29d1..022239b49 100644
 --- a/Libraries/LibWebView/WebUI/SettingsUI.cpp
 +++ b/Libraries/LibWebView/WebUI/SettingsUI.cpp
 @@ -98,6 +98,9 @@ void SettingsUI::register_interfaces()
@@ -523,7 +523,7 @@ index 6969e29d..022239b4 100644
  {
      auto parsed_browsing_behavior = Settings::parse_browsing_behavior(browsing_behavior);
 diff --git a/Libraries/LibWebView/WebUI/SettingsUI.h b/Libraries/LibWebView/WebUI/SettingsUI.h
-index e1b01836..fdf7d508 100644
+index e1b018367..fdf7d508a 100644
 --- a/Libraries/LibWebView/WebUI/SettingsUI.h
 +++ b/Libraries/LibWebView/WebUI/SettingsUI.h
 @@ -51,6 +51,7 @@ private:
@@ -543,10 +543,10 @@ index e1b01836..fdf7d508 100644
      void set_config_variable(JsonValue const&);
  
 diff --git a/UI/cmake/ResourceFiles.cmake b/UI/cmake/ResourceFiles.cmake
-index 760c2eab..1045d332 100644
+index c76122eb8..6ead58efd 100644
 --- a/UI/cmake/ResourceFiles.cmake
 +++ b/UI/cmake/ResourceFiles.cmake
-@@ -58,6 +58,7 @@ set(ABOUT_SETTINGS_RESOURCES
+@@ -59,6 +59,7 @@ set(ABOUT_SETTINGS_RESOURCES
      search.js
      services.js
      startup.js

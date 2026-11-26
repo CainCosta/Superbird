@@ -6,10 +6,10 @@ Subject: [PATCH] LibWebView: Keep a view's own scripting switch on every page
 
 
 diff --git a/Libraries/LibWebView/ViewImplementation.cpp b/Libraries/LibWebView/ViewImplementation.cpp
-index 628b31c1..ce53d07d 100644
+index 785ca1084..482a778b4 100644
 --- a/Libraries/LibWebView/ViewImplementation.cpp
 +++ b/Libraries/LibWebView/ViewImplementation.cpp
-@@ -3209,6 +3209,8 @@ void ViewImplementation::debug_request(ByteString const& request, ByteString con
+@@ -3298,6 +3298,8 @@ void ViewImplementation::debug_request(ByteString const& request, ByteString con
          dbgln("{}", page().dump_process_tree());
          return;
      }
@@ -18,7 +18,7 @@ index 628b31c1..ce53d07d 100644
  
      page().async_debug_request(request, argument);
  }
-@@ -4136,6 +4138,8 @@ void ViewImplementation::prepare_page_for_navigable(WebContentPage& page)
+@@ -4225,6 +4227,8 @@ void ViewImplementation::prepare_page_for_navigable(WebContentPage& page)
      if (Application::browser_options().webdriver_browser_endpoint.has_value())
          Application::the().push_webdriver_session_config(page);
      Application::the().apply_view_options({}, *this, page);
@@ -28,10 +28,10 @@ index 628b31c1..ce53d07d 100644
      send_preferences_to_page(page);
      if (auto screens = screen_rects(); screens.has_value())
 diff --git a/Libraries/LibWebView/ViewImplementation.h b/Libraries/LibWebView/ViewImplementation.h
-index 136c2ae9..399b19b7 100644
+index cac38fbe0..acf349c8b 100644
 --- a/Libraries/LibWebView/ViewImplementation.h
 +++ b/Libraries/LibWebView/ViewImplementation.h
-@@ -1087,6 +1087,9 @@ protected:
+@@ -1101,6 +1101,9 @@ protected:
      };
      Vector<InputToOpenLinkInNewTab> m_inputs_to_open_links_in_new_tabs;
      u64 m_next_input_event_id { 1 };

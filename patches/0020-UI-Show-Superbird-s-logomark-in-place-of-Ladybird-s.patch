@@ -131,7 +131,7 @@ z<gLEBzvU~;(lqs6pQ=<V0-u!lK=@FE!gqbRCNYG>kq$^(2y91U+Xbh=vI;9TTdf^e
 eGpwyUv;P6hiMSC2CSExJ0000<MNUMnLSTZANTs6y
 
 diff --git a/Base/res/ladybird/about-pages/version.html b/Base/res/ladybird/about-pages/version.html
-index eb0cdd8e..ae8f8e69 100644
+index eb0cdd8e3..ae8f8e690 100644
 --- a/Base/res/ladybird/about-pages/version.html
 +++ b/Base/res/ladybird/about-pages/version.html
 @@ -18,21 +18,24 @@
@@ -186,7 +186,7 @@ index eb0cdd8e..ae8f8e69 100644
          <div class="name">
              <h1 id="browser-name">Ladybird</h1>
 diff --git a/Base/res/ladybird/about-pages/welcome.css b/Base/res/ladybird/about-pages/welcome.css
-index 554f3dc8..acd7dbfc 100644
+index 554f3dc82..acd7dbfcc 100644
 --- a/Base/res/ladybird/about-pages/welcome.css
 +++ b/Base/res/ladybird/about-pages/welcome.css
 @@ -28,8 +28,21 @@ header {
@@ -214,7 +214,7 @@ index 554f3dc8..acd7dbfc 100644
  
  header h1 {
 diff --git a/Base/res/ladybird/about-pages/welcome.html b/Base/res/ladybird/about-pages/welcome.html
-index c6f31702..d8446ef9 100644
+index c6f317029..d8446ef9d 100644
 --- a/Base/res/ladybird/about-pages/welcome.html
 +++ b/Base/res/ladybird/about-pages/welcome.html
 @@ -19,16 +19,11 @@ SPDX-License-Identifier: BSD-2-Clause
@@ -238,7 +238,7 @@ index c6f31702..d8446ef9 100644
                  <h1>Welcome to Ladybird</h1>
                  <p class="muted">You can change any of this later in Settings.</p>
 diff --git a/UI/Qt/Icon.cpp b/UI/Qt/Icon.cpp
-index e8da3ec6..dc06ff61 100644
+index e8da3ec63..dc06ff611 100644
 --- a/UI/Qt/Icon.cpp
 +++ b/UI/Qt/Icon.cpp
 @@ -1100,15 +1100,16 @@ QSize physical_size_for_device_pixel_ratio(QSize size, qreal device_pixel_ratio)
@@ -281,7 +281,7 @@ index e8da3ec6..dc06ff61 100644
  }
  
 diff --git a/UI/Qt/Icon.h b/UI/Qt/Icon.h
-index e465ac5d..9828e8c8 100644
+index e465ac5de..9828e8c88 100644
 --- a/UI/Qt/Icon.h
 +++ b/UI/Qt/Icon.h
 @@ -90,8 +90,7 @@ QPixmap create_chrome_icon_pixmap(ChromeIcon, QColor, qreal device_pixel_ratio);
@@ -296,7 +296,7 @@ index e465ac5d..9828e8c8 100644
  
  }
 diff --git a/UI/Qt/LadybirdButton.cpp b/UI/Qt/LadybirdButton.cpp
-index 1861850b..462e4e38 100644
+index 1861850b5..462e4e38d 100644
 --- a/UI/Qt/LadybirdButton.cpp
 +++ b/UI/Qt/LadybirdButton.cpp
 @@ -32,8 +32,7 @@ static constexpr int TILE_VERTICAL_MARGIN = 4;
@@ -319,10 +319,10 @@ index 1861850b..462e4e38 100644
      auto chevron_center = QPointF(tile_rect.right() - TILE_TRAILING_PADDING - (CHEVRON_SIZE / 2), tile_rect.center().y());
      paint_chevron(painter, chevron_center, mark_color);
 diff --git a/UI/Qt/Theme.cpp b/UI/Qt/Theme.cpp
-index 78947e69..5e5723c5 100644
+index 9ee546d97..14f37356e 100644
 --- a/UI/Qt/Theme.cpp
 +++ b/UI/Qt/Theme.cpp
-@@ -573,7 +573,7 @@ QColor selected_row()
+@@ -563,7 +563,7 @@ QColor selected_row()
  QColor logomark()
  {
      if (!s_color_theme.accent.has_value())
@@ -332,10 +332,10 @@ index 78947e69..5e5723c5 100644
      auto color = with_contrast(*s_color_theme.accent, chrome().strip, 4.5f, adjustment);
      return with_contrast(color, chrome().toolbar, 4.5f, adjustment);
 diff --git a/UI/Qt/Theme.h b/UI/Qt/Theme.h
-index a67d63b2..510968a2 100644
+index 3bcb46c65..3039b724b 100644
 --- a/UI/Qt/Theme.h
 +++ b/UI/Qt/Theme.h
-@@ -126,7 +126,7 @@ QColor primary();
+@@ -124,7 +124,7 @@ QColor primary();
  // The fill of the selected row of a menu or a list navigated with the keyboard.
  QColor selected_row();
  

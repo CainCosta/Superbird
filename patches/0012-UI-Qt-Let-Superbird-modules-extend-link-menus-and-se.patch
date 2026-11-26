@@ -6,7 +6,7 @@ Subject: [PATCH] UI/Qt: Let Superbird modules extend link menus and see the
 
 
 diff --git a/UI/Qt/Actions.h b/UI/Qt/Actions.h
-index 32c2b9fb..573d8484 100644
+index 32c2b9fba..573d84841 100644
 --- a/UI/Qt/Actions.h
 +++ b/UI/Qt/Actions.h
 @@ -149,6 +149,8 @@ enum class ActionID {
@@ -19,7 +19,7 @@ index 32c2b9fb..573d8484 100644
  
  using ActionText = Variant<StringView, String>;
 diff --git a/UI/Qt/ContextMenus.cpp b/UI/Qt/ContextMenus.cpp
-index 520ab3d3..352dfb67 100644
+index 520ab3d30..352dfb674 100644
 --- a/UI/Qt/ContextMenus.cpp
 +++ b/UI/Qt/ContextMenus.cpp
 @@ -13,6 +13,7 @@
@@ -39,7 +39,7 @@ index 520ab3d3..352dfb67 100644
      add_inspect_element_action(*menu, view.view_id(), request);
      return menu;
 diff --git a/UI/Qt/Tab.h b/UI/Qt/Tab.h
-index facd92d9..68123609 100644
+index 321d3382f..eebc5492b 100644
 --- a/UI/Qt/Tab.h
 +++ b/UI/Qt/Tab.h
 @@ -151,6 +151,8 @@ public:
