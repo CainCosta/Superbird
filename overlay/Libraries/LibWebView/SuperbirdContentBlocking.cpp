@@ -254,7 +254,8 @@ ErrorOr<ByteBuffer> build_bundle(
     StringView custom_filters,
     bool trust_custom_filters,
     ReadonlyBytes resources_json,
-    StringView site_switches_rules)
+    StringView site_switches_rules,
+    bool logger_enabled)
 {
     std::vector<::Superbird::ContentBlockingFormat::ListEntry> entries;
     entries.reserve(lists.size());
@@ -274,7 +275,8 @@ ErrorOr<ByteBuffer> build_bundle(
         { custom_filters.characters_without_null_termination(), custom_filters.length() },
         trust_custom_filters,
         { reinterpret_cast<char const*>(resources_json.data()), resources_json.size() },
-        { site_switches_rules.characters_without_null_termination(), site_switches_rules.length() });
+        { site_switches_rules.characters_without_null_termination(), site_switches_rules.length() },
+        logger_enabled);
 
     if (out.empty())
         return ByteBuffer {};

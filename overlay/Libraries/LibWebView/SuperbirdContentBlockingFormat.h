@@ -240,7 +240,8 @@ inline std::string build_bundle_string(
     std::string_view custom_filters,
     bool trust_custom_filters,
     std::string_view resources_json = {},
-    std::string_view site_switch_rules = {})
+    std::string_view site_switch_rules = {},
+    bool logger_enabled = false)
 {
     if (!ubo_mode) {
         std::string out;
@@ -261,7 +262,9 @@ inline std::string build_bundle_string(
         return {};
 
     std::string out;
-    out.append("!superbird:meta version=1 mode=ubo\n");
+    out.append("!superbird:meta version=1 mode=ubo logger=");
+    out.push_back(logger_enabled ? '1' : '0');
+    out.push_back('\n');
 
     for (auto const& list : lists) {
         auto safe_id = sanitize_header_id(list.id);

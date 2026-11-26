@@ -4,8 +4,10 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use adblock::cosmetic_filter_cache::ProceduralOrActionFilter;
 use adblock::filters::cosmetic::CosmeticFilterOperator;
@@ -334,6 +336,7 @@ pub struct ParsedBundle<'a> {
     #[allow(dead_code)]
     pub version: u32,
     pub is_ubo_mode: bool,
+    pub logger_enabled: bool,
     pub lists: Vec<BundleList<'a>>,
     pub resources_json: Option<&'a str>,
 }
@@ -351,6 +354,7 @@ fn parse_header_attrs(line: &str) -> HashMap<&str, &str> {
 pub fn parse_bundle(input: &str) -> ParsedBundle<'_> {
     let mut version = 1u32;
     let mut is_ubo_mode = true;
+    let mut logger_enabled = false;
     let mut lists = Vec::new();
     let mut resources_json = None;
 
@@ -373,6 +377,9 @@ pub fn parse_bundle(input: &str) -> ParsedBundle<'_> {
             }
             if let Some(mode) = attrs.get("mode") {
                 is_ubo_mode = *mode == "ubo";
+            }
+            if let Some(logger) = attrs.get("logger") {
+                logger_enabled = *logger == "1";
             }
             pos = next_pos;
             continue;
@@ -453,9 +460,227 @@ pub fn parse_bundle(input: &str) -> ParsedBundle<'_> {
     ParsedBundle {
         version,
         is_ubo_mode,
+        logger_enabled,
         lists,
         resources_json,
     }
+}
+
+const SNAPSHOT_MAGIC: &[u8; 8] = b"SBCE0001";
+const MAX_FILTER_LOG_ENTRIES: usize = 500;
+
+#[derive(Clone, Debug)]
+pub struct FilterLogEntry {
+    pub kind: &'static str,
+    pub action: &'static str,
+    pub url: String,
+    pub source_url: String,
+    pub detail: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct EngineStats {
+    pub cache_hit: bool,
+    pub load_ms: f64,
+    pub list_count: usize,
+    pub resource_count: usize,
+}
+
+fn fnv1a64_bundle_hash(bundle: &ParsedBundle<'_>) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    let mut feed = |bytes: &[u8]| {
+        for &b in bytes {
+            hash ^= b as u64;
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        hash ^= 0xff;
+        hash = hash.wrapping_mul(0x100000001b3);
+    };
+    feed(SNAPSHOT_MAGIC);
+    feed(&[bundle.is_ubo_mode as u8, bundle.logger_enabled as u8]);
+    for list in &bundle.lists {
+        if list.id == "site-switches" {
+            continue;
+        }
+        feed(list.id.as_bytes());
+        feed(&[
+            list.trusted as u8,
+            matches!(list.format, FilterFormat::Hosts) as u8,
+        ]);
+        feed(list.content.as_bytes());
+    }
+    hash
+}
+
+fn resolve_cache_dir(input_len: usize) -> Option<PathBuf> {
+    if let Ok(val) = std::env::var("SUPERBIRD_CONTENT_BLOCKER_CACHE_DIR") {
+        let trimmed = val.trim();
+        if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("off") {
+            return None;
+        }
+        return Some(PathBuf::from(trimmed));
+    }
+    if input_len >= 64 * 1024 {
+        return Some(std::env::temp_dir().join("superbird-cb-cache"));
+    }
+    None
+}
+
+fn serialize_generic_rules(rules: &GenericSelectorListRules) -> Option<Vec<u8>> {
+    let always: Vec<&str> = rules.always_needed.iter().map(|s| s.as_str()).collect();
+    let val = serde_json::json!({
+        "a": always,
+        "c": rules.by_class,
+        "i": rules.by_id,
+    });
+    serde_json::to_vec(&val).ok()
+}
+
+fn deserialize_generic_rules(bytes: &[u8]) -> Option<GenericSelectorListRules> {
+    let val: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let obj = val.as_object()?;
+    let mut rules = GenericSelectorListRules::default();
+    if let Some(arr) = obj.get("a").and_then(|v| v.as_array()) {
+        for item in arr {
+            if let Some(s) = item.as_str() {
+                rules.always_needed.insert(s.to_string());
+            }
+        }
+    }
+    for (field, target) in [("c", &mut rules.by_class), ("i", &mut rules.by_id)] {
+        if let Some(map) = obj.get(field).and_then(|v| v.as_object()) {
+            for (k, v) in map {
+                if let Some(arr) = v.as_array() {
+                    let vec: Vec<String> = arr
+                        .iter()
+                        .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                        .collect();
+                    target.insert(k.clone(), vec);
+                }
+            }
+        }
+    }
+    Some(rules)
+}
+
+fn try_load_snapshot(
+    cache_path: &PathBuf,
+) -> Option<(adblock::engine::Engine, GenericSelectorListRules)> {
+    let data = std::fs::read(cache_path).ok()?;
+    if data.len() < 12 || &data[..8] != SNAPSHOT_MAGIC {
+        return None;
+    }
+    let dat_len = u32::from_le_bytes([data[8], data[9], data[10], data[11]]) as usize;
+    let dat_end = 12usize.checked_add(dat_len)?;
+    if dat_end > data.len() {
+        return None;
+    }
+    let mut engine = adblock::engine::Engine::default();
+    engine.deserialize(&data[12..dat_end]).ok()?;
+    let generic_rules = deserialize_generic_rules(&data[dat_end..])?;
+    Some((engine, generic_rules))
+}
+
+fn try_save_snapshot(
+    cache_dir: &PathBuf,
+    cache_path: &PathBuf,
+    engine: &adblock::engine::Engine,
+    generic_rules: &GenericSelectorListRules,
+) {
+    let Some(generic_bytes) = serialize_generic_rules(generic_rules) else {
+        return;
+    };
+    let dat = engine.serialize();
+    let Ok(dat_len_u32) = u32::try_from(dat.len()) else {
+        return;
+    };
+    if std::fs::create_dir_all(cache_dir).is_err() {
+        return;
+    }
+    let mut payload = Vec::with_capacity(12 + dat.len() + generic_bytes.len());
+    payload.extend_from_slice(SNAPSHOT_MAGIC);
+    payload.extend_from_slice(&dat_len_u32.to_le_bytes());
+    payload.extend_from_slice(&dat);
+    payload.extend_from_slice(&generic_bytes);
+
+    let tmp_path = cache_dir.join(format!(
+        "{}.tmp.{}",
+        cache_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("engine.sbce"),
+        std::process::id()
+    ));
+    if std::fs::write(&tmp_path, &payload).is_ok() {
+        let _ = std::fs::rename(&tmp_path, cache_path);
+    }
+}
+
+pub fn record_filter_log(
+    engine: &ContentBlockerEngine,
+    kind: &'static str,
+    action: &'static str,
+    url: &str,
+    source_url: &str,
+    detail: String,
+) {
+    if !engine.logger_enabled {
+        return;
+    }
+    if let Ok(mut log) = engine.filter_log.lock() {
+        if log.len() >= MAX_FILTER_LOG_ENTRIES {
+            log.pop_front();
+        }
+        log.push_back(FilterLogEntry {
+            kind,
+            action,
+            url: url.to_string(),
+            source_url: source_url.to_string(),
+            detail,
+        });
+    }
+}
+
+pub fn filter_log_json(engine: &ContentBlockerEngine) -> String {
+    if !engine.logger_enabled {
+        return "[]".to_string();
+    }
+    let entries: Vec<serde_json::Value> = match engine.filter_log.lock() {
+        Ok(guard) => guard
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "kind": e.kind,
+                    "action": e.action,
+                    "url": e.url,
+                    "sourceUrl": e.source_url,
+                    "detail": e.detail,
+                })
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+    serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string())
+}
+
+pub fn engine_stats_json(engine: &ContentBlockerEngine) -> String {
+    let missing_count = engine
+        .missing_resources
+        .lock()
+        .map(|g| g.len())
+        .unwrap_or(0);
+    let log_count = engine.filter_log.lock().map(|g| g.len()).unwrap_or(0);
+    serde_json::json!({
+        "uboMode": engine.is_ubo_mode,
+        "cacheHit": engine.stats.cache_hit,
+        "loadMs": (engine.stats.load_ms * 100.0).round() / 100.0,
+        "listCount": engine.stats.list_count,
+        "resourceCount": engine.stats.resource_count,
+        "missingResourceCount": missing_count,
+        "loggerEnabled": engine.logger_enabled,
+        "logEntryCount": log_count,
+    })
+    .to_string()
 }
 
 struct SuperbirdResourceStorage {
@@ -481,10 +706,10 @@ impl ResourceStorageBackend for SuperbirdResourceStorage {
 }
 
 pub fn create_engine(input: &str) -> ContentBlockerEngine {
+    let start = Instant::now();
     let bundle = parse_bundle(input);
-    let mut filter_set = FilterSet::new(false);
-    let mut generic_selector_list_rules = GenericSelectorListRules::default();
     let mut no_cosmetic_hosts = HashSet::new();
+    let mut list_count = 0usize;
 
     for list in &bundle.lists {
         if list.id == "site-switches" {
@@ -502,37 +727,68 @@ pub fn create_engine(input: &str) -> ContentBlockerEngine {
             }
             continue;
         }
-        let permissions = if bundle.is_ubo_mode && list.trusted {
-            PermissionMask::from_bits(1)
-        } else {
-            PermissionMask::default()
-        };
-
-        let preprocessed;
-        let is_standard = matches!(list.format, FilterFormat::Standard);
-        let text_for_set = if bundle.is_ubo_mode && is_standard {
-            preprocessed = preprocess_if_directives(list.content);
-            preprocessed.as_str()
-        } else {
-            list.content
-        };
-
-        if is_standard {
-            generic_selector_list_rules.add_rules(text_for_set);
-        }
-
-        filter_set.add_filter_list(
-            text_for_set.to_string(),
-            ParseOptions {
-                format: list.format,
-                permissions,
-                ..ParseOptions::default()
-            },
-        );
+        list_count += 1;
     }
 
-    let mut engine = adblock::engine::Engine::new_with_filter_set(filter_set);
+    let cache_dir = resolve_cache_dir(input.len());
+    let cache_path = cache_dir.as_ref().map(|dir| {
+        let hash = fnv1a64_bundle_hash(&bundle);
+        dir.join(format!("engine-{:016x}.sbce", hash))
+    });
+
+    let mut cache_hit = false;
+    let (mut engine, generic_selector_list_rules) =
+        if let Some((cached_engine, cached_generic)) =
+            cache_path.as_ref().and_then(try_load_snapshot)
+        {
+            cache_hit = true;
+            (cached_engine, cached_generic)
+        } else {
+            let mut filter_set = FilterSet::new(bundle.logger_enabled);
+            let mut generic_selector_list_rules = GenericSelectorListRules::default();
+
+            for list in &bundle.lists {
+                if list.id == "site-switches" {
+                    continue;
+                }
+                let permissions = if bundle.is_ubo_mode && list.trusted {
+                    PermissionMask::from_bits(1)
+                } else {
+                    PermissionMask::default()
+                };
+
+                let preprocessed;
+                let is_standard = matches!(list.format, FilterFormat::Standard);
+                let text_for_set = if bundle.is_ubo_mode && is_standard {
+                    preprocessed = preprocess_if_directives(list.content);
+                    preprocessed.as_str()
+                } else {
+                    list.content
+                };
+
+                if is_standard {
+                    generic_selector_list_rules.add_rules(text_for_set);
+                }
+
+                filter_set.add_filter_list(
+                    text_for_set.to_string(),
+                    ParseOptions {
+                        format: list.format,
+                        permissions,
+                        ..ParseOptions::default()
+                    },
+                );
+            }
+
+            let compiled = adblock::engine::Engine::new_with_filter_set(filter_set);
+            if let (Some(dir), Some(path)) = (cache_dir.as_ref(), cache_path.as_ref()) {
+                try_save_snapshot(dir, path, &compiled, &generic_selector_list_rules);
+            }
+            (compiled, generic_selector_list_rules)
+        };
+
     let missing_resources = Arc::new(Mutex::new(HashSet::new()));
+    let mut resource_count = 0usize;
 
     if bundle.is_ubo_mode {
         let mut storage = InMemoryResourceStorage::default();
@@ -541,6 +797,7 @@ pub fn create_engine(input: &str) -> ContentBlockerEngine {
             if !trimmed.is_empty() {
                 match serde_json::from_str::<Vec<Resource>>(trimmed) {
                     Ok(mut resources) => {
+                        resource_count = resources.len();
                         for resource in &mut resources {
                             if resource.name.starts_with("trusted-")
                                 && resource.permission.to_bits() == 0
@@ -565,12 +822,22 @@ pub fn create_engine(input: &str) -> ContentBlockerEngine {
         });
     }
 
+    let load_ms = start.elapsed().as_secs_f64() * 1000.0;
+
     ContentBlockerEngine {
         engine,
         generic_selector_list_rules,
         is_ubo_mode: bundle.is_ubo_mode,
+        logger_enabled: bundle.logger_enabled,
         missing_resources,
         no_cosmetic_hosts,
+        filter_log: Mutex::new(VecDeque::new()),
+        stats: EngineStats {
+            cache_hit,
+            load_ms,
+            list_count,
+            resource_count,
+        },
     }
 }
 
@@ -1197,6 +1464,20 @@ pub fn injected_script_for_url(engine: &ContentBlockerEngine, url: &str) -> Stri
         }
     }
 
+    if has_scriptlets {
+        record_filter_log(engine, "scriptlet", "inject", url, url, "injected".to_string());
+    }
+    if has_procedural {
+        record_filter_log(
+            engine,
+            "procedural",
+            "inject",
+            url,
+            url,
+            format!("{} rules", procedural_values.len()),
+        );
+    }
+
     out
 }
 
@@ -1243,11 +1524,35 @@ pub fn check_network_request(
         };
     }
 
+    let redirect_data_url = result.redirect.unwrap_or_default();
+    let rewritten_url = result.rewritten_url.unwrap_or_default();
+    if engine.logger_enabled {
+        let filter_text = result
+            .filter
+            .as_ref()
+            .and_then(|f| f.raw_line.clone())
+            .unwrap_or_default();
+        if !redirect_data_url.is_empty() {
+            record_filter_log(engine, "network", "redirect", url, source_url, filter_text);
+        } else if matched {
+            record_filter_log(engine, "network", "block", url, source_url, filter_text);
+        } else if !rewritten_url.is_empty() {
+            record_filter_log(
+                engine,
+                "network",
+                "removeparam",
+                url,
+                source_url,
+                rewritten_url.clone(),
+            );
+        }
+    }
+
     NetworkCheckOutcome {
         matched,
         important: result.important,
-        redirect_data_url: result.redirect.unwrap_or_default(),
-        rewritten_url: result.rewritten_url.unwrap_or_default(),
+        redirect_data_url,
+        rewritten_url,
     }
 }
 
@@ -1263,10 +1568,14 @@ pub fn csp_directives_for_url(
     let Ok(request) = adblock::request::Request::new(url, source_url, request_type, "GET") else {
         return String::new();
     };
-    engine
+    let directives = engine
         .engine
         .get_csp_directives(&request)
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if engine.logger_enabled && !directives.is_empty() {
+        record_filter_log(engine, "csp", "inject", url, source_url, directives.clone());
+    }
+    directives
 }
 
 #[cfg(test)]
@@ -1786,5 +2095,59 @@ example.com##:xpath(//div[@data-promo='1'])
         assert!(crate::cosmetic_css_for_url(&engine, "https://example.com/", &["generic-ad"], &[]).is_empty());
         assert!(injected_script_for_url(&engine, "https://example.com/").is_empty());
         assert!(crate::cosmetic_css_for_url(&engine, "https://other.test/", &["generic-ad"], &[]).contains(".generic-ad"));
+    }
+
+    #[test]
+    fn binary_snapshot_cache_and_opt_in_logger_work_and_recover_from_corruption() {
+        let unique = format!(
+            "superbird-cb-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let cache_dir = std::env::temp_dir().join(unique);
+        let _ = std::fs::remove_dir_all(&cache_dir);
+
+        let mut bundle = String::from("!superbird:meta version=1 mode=ubo logger=1\n");
+        bundle.push_str(&make_bundle_list(
+            "uboFilters",
+            1,
+            "standard",
+            "||ads.example/banner.js$script\n##.ad-slot, .promo-slot\n",
+        ));
+        bundle.push_str("!superbird:end\n");
+
+        // Build snapshot manually via helpers (avoids env var race with parallel tests)
+        let parsed = parse_bundle(&bundle);
+        let hash = fnv1a64_bundle_hash(&parsed);
+        let cache_path = cache_dir.join(format!("engine-{:016x}.sbce", hash));
+
+        let engine = create_engine(&bundle);
+        assert!(engine.logger_enabled);
+        let hit = check_network_request(
+            &engine,
+            "https://ads.example/banner.js",
+            "https://site.test/",
+            "script",
+            "GET",
+        );
+        assert!(hit.matched);
+        let log = filter_log_json(&engine);
+        assert!(log.contains("\"action\":\"block\""));
+        assert!(log.contains("||ads.example/banner.js$script"));
+
+        // Save snapshot, reload from snapshot, verify identical blocking + generic selector rules
+        try_save_snapshot(&cache_dir, &cache_path, &engine.engine, &engine.generic_selector_list_rules);
+        let (reloaded_engine, reloaded_generic) = try_load_snapshot(&cache_path).expect("snapshot load");
+        let req = Request::new("https://ads.example/banner.js", "https://site.test/", "script", "GET").unwrap();
+        assert!(reloaded_engine.check_network_request(&req).should_block());
+        assert!(!reloaded_generic.by_class.is_empty());
+
+        // Corrupt snapshot must safely return None (no panic)
+        std::fs::write(&cache_path, b"SBCE0001\x05\x00\x00\x00corrupt").unwrap();
+        assert!(try_load_snapshot(&cache_path).is_none());
+
+        let _ = std::fs::remove_dir_all(&cache_dir);
     }
 }

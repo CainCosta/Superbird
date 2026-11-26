@@ -1,0 +1,2 @@
+logger=0 enabled=false entries=0
+logger=1 enabled=true kinds=scriptlet:inject,procedural:inject,scriptlet:inject,procedural:inject lists=1 resources=1

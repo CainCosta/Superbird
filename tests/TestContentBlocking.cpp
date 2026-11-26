@@ -67,7 +67,10 @@ void test_bundle_serialization_ubo_and_default_modes()
     };
 
     auto ubo_bundle = build_bundle_string(true, lists, "##.custom", false, "[{\"name\":\"set.js\"}]");
-    assert(ubo_bundle.starts_with("!superbird:meta version=1 mode=ubo\n"));
+    assert(ubo_bundle.starts_with("!superbird:meta version=1 mode=ubo logger=0\n"));
+
+    auto logged_bundle = build_bundle_string(true, {}, "##.custom", false, "", "", true);
+    assert(logged_bundle.starts_with("!superbird:meta version=1 mode=ubo logger=1\n"));
     assert(ubo_bundle.find("!superbird:list id=easyList trust=0 format=standard bytes=13\n||ad.example^\n") != std::string::npos);
     assert(ubo_bundle.find("!superbird:list id=uboFilters trust=1 format=standard bytes=27\nexample.com##+js(set, a, 1)\n") != std::string::npos);
     // Header ID sanitization prevents whitespace/newline header injection.

@@ -63,6 +63,7 @@ WEBVIEW_API ErrorOr<ByteBuffer> build_bundle(
     StringView custom_filters,
     bool trust_custom_filters,
     ReadonlyBytes resources_json = {},
-    StringView site_switches_rules = {});
+    StringView site_switches_rules = {},
+    bool logger_enabled = false);
 
 }

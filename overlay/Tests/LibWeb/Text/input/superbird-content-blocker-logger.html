@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<head></head>
+<body>
+<script>
+    function makeBundle(logger, body, resources) {
+        let out = `!superbird:meta version=1 mode=ubo logger=${logger ? 1 : 0}\n`;
+        out += `!superbird:list id=uboFilters trust=1 format=standard bytes=${body.length}\n`;
+        out += body + "\n";
+        const json = JSON.stringify(resources);
+        out += `!superbird:resources bytes=${json.length}\n`;
+        out += json + "\n";
+        out += "!superbird:end\n";
+        return out;
+    }
+
+    (async () => {
+        const lines = [];
+        const println = (s) => lines.push(String(s));
+
+        const base = document.createElement("base");
+        base.href = "http://logger.test/";
+        document.head.appendChild(base);
+
+        const resources = [
+            {
+                name: "set-flag.js",
+                aliases: [],
+                kind: { mime: "application/javascript" },
+                content: btoa("function setFlag(k, v) { window[k] = v; }"),
+                dependencies: [],
+                permission: 0,
+            },
+        ];
+        const rules = "logger.test##+js(set-flag, __ok, 1)\nlogger.test##.ad:has-text(Promo)";
+
+        try {
+            internals.setContentBlockingEnabled(true);
+
+            // 1. Logger OFF (default): zero log entries recorded
+            internals.setContentBlockers(makeBundle(false, rules, resources));
+            const f1 = document.createElement("iframe");
+            const l1 = new Promise((r) => f1.addEventListener("load", r, { once: true }));
+            f1.srcdoc = `<div class="ad">Promo</div>`;
+            document.body.appendChild(f1);
+            await l1;
+            const statsOff = JSON.parse(internals.contentBlockerStats());
+            const logOff = JSON.parse(internals.contentBlockerFilterLog());
+            println("logger=0 enabled=" + statsOff.loggerEnabled + " entries=" + logOff.length);
+
+            // 2. Logger ON: records scriptlet + procedural injections
+            internals.setContentBlockers(makeBundle(true, rules, resources));
+            const f2 = document.createElement("iframe");
+            const l2 = new Promise((r) => f2.addEventListener("load", r, { once: true }));
+            f2.srcdoc = `<div class="ad">Promo</div>`;
+            document.body.appendChild(f2);
+            await l2;
+            const statsOn = JSON.parse(internals.contentBlockerStats());
+            const logOn = JSON.parse(internals.contentBlockerFilterLog());
+            const kinds = logOn.map((e) => e.kind + ":" + e.action).join(",");
+            println("logger=1 enabled=" + statsOn.loggerEnabled + " kinds=" + kinds + " lists=" + statsOn.listCount + " resources=" + statsOn.resourceCount);
+        } catch (e) {
+            println("ERROR: " + e);
+        } finally {
+            internals.setContentBlockers("");
+            internals.setContentBlockingEnabled(true);
+            internals.signalTestIsDone(lines.join("\n") + "\n");
+        }
+    })();
+</script>
+</body>
