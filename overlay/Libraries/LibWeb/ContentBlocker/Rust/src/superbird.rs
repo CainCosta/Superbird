@@ -583,6 +583,66 @@ pub fn missing_resources_json(engine: &ContentBlockerEngine) -> String {
     serde_json::to_string(&names).unwrap_or_else(|_| "[]".to_string())
 }
 
+pub struct NetworkCheckOutcome {
+    pub matched: bool,
+    pub important: bool,
+    pub redirect_data_url: String,
+    pub rewritten_url: String,
+}
+
+pub fn check_network_request(
+    engine: &ContentBlockerEngine,
+    url: &str,
+    source_url: &str,
+    request_type: &str,
+    method: &str,
+) -> NetworkCheckOutcome {
+    let Ok(request) = adblock::request::Request::new(url, source_url, request_type, method) else {
+        return NetworkCheckOutcome {
+            matched: false,
+            important: false,
+            redirect_data_url: String::new(),
+            rewritten_url: String::new(),
+        };
+    };
+
+    let result = engine.engine.check_network_request(&request);
+    let matched = result.should_block();
+    if !engine.is_ubo_mode {
+        return NetworkCheckOutcome {
+            matched,
+            important: result.important,
+            redirect_data_url: String::new(),
+            rewritten_url: String::new(),
+        };
+    }
+
+    NetworkCheckOutcome {
+        matched,
+        important: result.important,
+        redirect_data_url: result.redirect.unwrap_or_default(),
+        rewritten_url: result.rewritten_url.unwrap_or_default(),
+    }
+}
+
+pub fn csp_directives_for_url(
+    engine: &ContentBlockerEngine,
+    url: &str,
+    source_url: &str,
+    request_type: &str,
+) -> String {
+    if !engine.is_ubo_mode {
+        return String::new();
+    }
+    let Ok(request) = adblock::request::Request::new(url, source_url, request_type, "GET") else {
+        return String::new();
+    };
+    engine
+        .engine
+        .get_csp_directives(&request)
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -919,6 +979,130 @@ example.com##+js(trusted-set-cookie)
         assert_eq!(
             missing_resources_json(&engine),
             "[\"future-brand-new-scriptlet.js\"]"
+        );
+    }
+
+    #[test]
+    fn redirects_removeparam_csp_and_websocket_matching() {
+        let noop_js = base64_encode(b"window.__redirectedNoop = true;");
+        let resources_json = serde_json::to_string(&vec![serde_json::json!({
+            "name": "noop.js",
+            "aliases": ["noopjs"],
+            "kind": { "mime": "application/javascript" },
+            "content": noop_js,
+            "dependencies": [],
+            "permission": 0
+        })])
+        .unwrap();
+
+        let rules = "\
+||ads.example/script.js$script,redirect=noopjs
+||site.example^$removeparam=utm_source
+||site.example^$removeparam=fbclid
+||csp.example^$csp=script-src 'self'
+||ws.example^$websocket
+";
+        let mut bundle = String::from("!superbird:meta version=1 mode=ubo\n");
+        bundle.push_str(&make_bundle_list("uboFilters", 1, "standard", rules));
+        bundle.push_str(&make_bundle_resources(&resources_json));
+        bundle.push_str("!superbird:end\n");
+
+        let engine = create_engine(&bundle);
+
+        // Redirect
+        let redir = check_network_request(
+            &engine,
+            "https://ads.example/script.js",
+            "https://site.example/",
+            "script",
+            "GET",
+        );
+        assert!(redir.matched);
+        assert!(
+            redir
+                .redirect_data_url
+                .starts_with("data:application/javascript;base64,"),
+            "Unexpected redirect: {}",
+            redir.redirect_data_url
+        );
+
+        // $removeparam
+        let stripped = check_network_request(
+            &engine,
+            "https://site.example/page?id=42&utm_source=ads&fbclid=xyz",
+            "https://site.example/",
+            "document",
+            "GET",
+        );
+        assert!(!stripped.matched);
+        assert_eq!(stripped.rewritten_url, "https://site.example/page?id=42");
+
+        // $csp
+        let csp = csp_directives_for_url(
+            &engine,
+            "https://csp.example/index.html",
+            "https://csp.example/index.html",
+            "document",
+        );
+        assert_eq!(csp, "script-src 'self'");
+
+        // $websocket (ws:// and wss://)
+        let ws_block = check_network_request(
+            &engine,
+            "wss://ws.example/live",
+            "https://site.example/",
+            "websocket",
+            "GET",
+        );
+        assert!(ws_block.matched);
+        let ws_plain = check_network_request(
+            &engine,
+            "ws://ws.example/live",
+            "https://site.example/",
+            "websocket",
+            "GET",
+        );
+        assert!(ws_plain.matched);
+        let ws_other = check_network_request(
+            &engine,
+            "wss://allowed.example/live",
+            "https://site.example/",
+            "websocket",
+            "GET",
+        );
+        assert!(!ws_other.matched);
+
+        // Default mode disables redirects, removeparam, and CSP injection
+        let mut default_bundle = String::from("!superbird:meta version=1 mode=default\n");
+        default_bundle.push_str(&make_bundle_list("easyList", 0, "standard", rules));
+        default_bundle.push_str(&make_bundle_resources(&resources_json));
+        default_bundle.push_str("!superbird:end\n");
+        let default_engine = create_engine(&default_bundle);
+
+        let default_redir = check_network_request(
+            &default_engine,
+            "https://ads.example/script.js",
+            "https://site.example/",
+            "script",
+            "GET",
+        );
+        assert!(default_redir.redirect_data_url.is_empty());
+        let default_strip = check_network_request(
+            &default_engine,
+            "https://site.example/page?id=42&utm_source=ads",
+            "https://site.example/",
+            "document",
+            "GET",
+        );
+        assert!(default_strip.rewritten_url.is_empty());
+        assert!(
+            csp_directives_for_url(
+                &default_engine,
+                "https://csp.example/",
+                "https://csp.example/",
+                "document"
+            )
+            .is_empty()
         );
     }
 }

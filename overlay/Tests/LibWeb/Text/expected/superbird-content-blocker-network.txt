@@ -1,0 +1,7 @@
+redirect script: loaded / from-noop-redirect / hits=0
+redirect fetch: 200 / {"ok":"redirected"}
+csp blocked inline: blocked
+websocket blocked: blocked
+removeparam fetch: 200 / param-cleaned-ok / cleaned=true / dirty=false
+csp cleared inline: ran
+websocket allowed: opened

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<head></head>
+<body>
+<script>
+    function makeBundle(mode, lists, resources) {
+        let out = `!superbird:meta version=1 mode=${mode}\n`;
+        for (const list of lists) {
+            out += `!superbird:list id=${list.id} trust=${list.trust} format=standard bytes=${list.body.length}\n`;
+            out += list.body + "\n";
+        }
+        if (resources !== null) {
+            const json = JSON.stringify(resources);
+            out += `!superbird:resources bytes=${json.length}\n`;
+            out += json + "\n";
+        }
+        out += "!superbird:end\n";
+        return out;
+    }
+
+    (async () => {
+        const lines = [];
+        const println = (s) => lines.push(String(s));
+        const port = internals.getEchoServerPort();
+        const baseURL = `http://localhost:${port}`;
+        const scope = "sb-m2-" + Math.random().toString(16).slice(2);
+
+        async function createEcho(path, options) {
+            const fullPath = `/echo/${scope}${path}`;
+            const res = await fetch(`${baseURL}/echo`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ method: "GET", path: fullPath, ...options }),
+            });
+            if (!res.ok) throw new Error("createEcho failed: " + res.status);
+            return `${baseURL}${fullPath}`;
+        }
+
+        async function loadCspFrame(url) {
+            let received = false;
+            const onMessage = (ev) => {
+                if (ev.data === "inline-ran") received = true;
+            };
+            window.addEventListener("message", onMessage);
+            const frame = document.createElement("iframe");
+            const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+            frame.src = url;
+            document.body.appendChild(frame);
+            await loaded;
+            await new Promise((r) => setTimeout(r, 30));
+            window.removeEventListener("message", onMessage);
+            return received ? "ran" : "blocked";
+        }
+
+        try {
+            internals.setContentBlockingEnabled(true);
+            internals.setContentBlockers("");
+
+            const adScriptURL = await createEcho("/ad.js", {
+                status: 200,
+                headers: { "Content-Type": "application/javascript" },
+                body: "window.__redirectedScript = 'FROM_NETWORK_FAIL';",
+            });
+            const apiURL = await createEcho("/api.json", {
+                status: 200,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+                body: '{"ok":"network"}',
+            });
+            await createEcho("/param-check?keep=1", {
+                status: 200,
+                headers: {
+                    "Content-Type": "text/plain",
+                    "Access-Control-Allow-Origin": "*",
+                },
+                body: "param-cleaned-ok",
+            });
+            const cspPageURL = await createEcho("/csp-page.html", {
+                status: 200,
+                headers: { "Content-Type": "text/html" },
+                body: "<!DOCTYPE html><script>parent.postMessage('inline-ran', '*');<\/script>",
+            });
+
+            const resources = [
+                {
+                    name: "noop.js",
+                    aliases: ["noopjs"],
+                    kind: { mime: "application/javascript" },
+                    content: btoa("window.__redirectedScript = 'from-noop-redirect';"),
+                    dependencies: [],
+                    permission: 0,
+                },
+                {
+                    name: "empty.json",
+                    aliases: [],
+                    kind: { mime: "application/json" },
+                    content: btoa('{"ok":"redirected"}'),
+                    dependencies: [],
+                    permission: 0,
+                },
+            ];
+
+            const bundle = makeBundle(
+                "ubo",
+                [
+                    {
+                        id: "uboFilters",
+                        trust: 1,
+                        body: [
+                            `/echo/${scope}/ad.js$script,redirect=noopjs`,
+                            `/echo/${scope}/api.json$xmlhttprequest,redirect=empty.json`,
+                            `/echo/${scope}/param-check$removeparam=utm_source`,
+                            `/echo/${scope}/param-check$removeparam=fbclid`,
+                            `/echo/${scope}/csp-page.html$csp=script-src 'none'`,
+                            `||localhost^$websocket`,
+                        ].join("\n"),
+                    },
+                ],
+                resources
+            );
+            internals.setContentBlockers(bundle);
+
+            // 1. $redirect for <script> (and verify 0 network hits to echo server)
+            const scriptLoaded = await new Promise((resolve) => {
+                const s = document.createElement("script");
+                s.src = adScriptURL;
+                s.onload = () => resolve("loaded");
+                s.onerror = () => resolve("error");
+                document.head.appendChild(s);
+            });
+            const adHits = await (await fetch(`${baseURL}/recorded-request-count/echo/${scope}/ad.js`)).text();
+            println("redirect script: " + scriptLoaded + " / " + window.__redirectedScript + " / hits=" + adHits.trim());
+
+            // 2. $redirect for cross-origin fetch()
+            const crossOriginApiURL = apiURL.replace("localhost", "127.0.0.1");
+            const apiRes = await fetch(crossOriginApiURL);
+            println("redirect fetch: " + apiRes.status + " / " + (await apiRes.text()));
+
+            // 3. $removeparam on fetch()
+            const paramRes = await fetch(`${baseURL}/echo/${scope}/param-check?keep=1&utm_source=ads&fbclid=xyz`);
+            const paramBody = await paramRes.text();
+
+            // 4. $csp blocks inline script in subdocument
+            println("csp blocked inline: " + (await loadCspFrame(cspPageURL)));
+
+            // 5. $websocket blocks WebSocket connection
+            const wsBlocked = await new Promise((resolve) => {
+                const ws = new WebSocket(`ws://localhost:${port}/`);
+                ws.onopen = () => {
+                    ws.close();
+                    resolve("opened");
+                };
+                ws.onerror = () => resolve("blocked");
+                ws.onclose = () => resolve("blocked");
+            });
+            println("websocket blocked: " + wsBlocked);
+
+            // 6. Clearing rules lets us verify the echo server recorded only the stripped query
+            //    (the dirty query was never received) and restores CSP + WebSocket connectivity.
+            internals.setContentBlockers("");
+
+            const cleanedRecorded = await fetch(`${baseURL}/recorded-request-headers/echo/${scope}/param-check?keep=1`).then((r) => r.ok, () => false);
+            const dirtyRecorded = await fetch(`${baseURL}/recorded-request-headers/echo/${scope}/param-check?keep=1&utm_source=ads&fbclid=xyz`).then((r) => r.ok, () => false);
+            println("removeparam fetch: " + paramRes.status + " / " + paramBody + " / cleaned=" + cleanedRecorded + " / dirty=" + dirtyRecorded);
+
+            println("csp cleared inline: " + (await loadCspFrame(cspPageURL)));
+
+            const wsAllowed = await new Promise((resolve) => {
+                const ws = new WebSocket(`ws://localhost:${port}/`);
+                ws.onopen = () => {
+                    ws.close();
+                    resolve("opened");
+                };
+                ws.onerror = () => resolve("error");
+            });
+            println("websocket allowed: " + wsAllowed);
+        } catch (e) {
+            println("ERROR: " + e + " " + (e && e.stack));
+        } finally {
+            internals.setContentBlockers("");
+            internals.setContentBlockingEnabled(true);
+            internals.signalTestIsDone(lines.join("\n") + "\n");
+        }
+    })();
+</script>
+</body>

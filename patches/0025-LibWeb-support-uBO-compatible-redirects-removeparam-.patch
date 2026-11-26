@@ -1,0 +1,423 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 19:10:31 -0600
+Subject: [PATCH] LibWeb: support uBO-compatible redirects, removeparam, CSP
+ injection, and WebSocket blocking
+
+
+diff --git a/Libraries/LibWeb/ContentBlocker/Rust/cbindgen.toml b/Libraries/LibWeb/ContentBlocker/Rust/cbindgen.toml
+index cec7fa6c..3eab2f45 100644
+--- a/Libraries/LibWeb/ContentBlocker/Rust/cbindgen.toml
++++ b/Libraries/LibWeb/ContentBlocker/Rust/cbindgen.toml
+@@ -21,7 +21,7 @@ parse_deps = false
+ all_features = false
+ 
+ [export]
+-include = ["ContentBlockerString"]
++include = ["ContentBlockerString", "ContentBlockerMatchResult"]
+ # Opaque to C++, which names it by a void pointer (see below).
+ exclude = ["ContentBlockerEngine"]
+ 
+diff --git a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
+index 5e0a3187..91bde90b 100644
+--- a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
++++ b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
+@@ -25,6 +25,14 @@ pub struct ContentBlockerString {
+     length: usize,
+ }
+ 
++#[repr(C)]
++pub struct ContentBlockerMatchResult {
++    matched: bool,
++    important: bool,
++    redirect_data_url: ContentBlockerString,
++    rewritten_url: ContentBlockerString,
++}
++
+ pub struct ContentBlockerEngine {
+     engine: adblock::engine::Engine,
+     generic_selector_list_rules: GenericSelectorListRules,
+@@ -404,6 +412,73 @@ pub extern "C" fn rust_content_blocker_missing_resources(
+     })
+ }
+ 
++#[unsafe(no_mangle)]
++pub extern "C" fn rust_content_blocker_check_request(
++    engine: Option<&ContentBlockerEngine>,
++    url: ak::Span<'_, u8>,
++    source_url: ak::Span<'_, u8>,
++    request_type: ak::Span<'_, u8>,
++    method: ak::Span<'_, u8>,
++) -> ContentBlockerMatchResult {
++    abort_on_panic(|| {
++        let empty = || ContentBlockerMatchResult {
++            matched: false,
++            important: false,
++            redirect_data_url: string_to_ffi(String::new()),
++            rewritten_url: string_to_ffi(String::new()),
++        };
++        let Some(engine) = engine else {
++            return empty();
++        };
++        let Some(url) = as_str(url) else {
++            return empty();
++        };
++        let Some(source_url) = as_str(source_url) else {
++            return empty();
++        };
++        let Some(request_type) = as_str(request_type) else {
++            return empty();
++        };
++        let method = as_str(method).unwrap_or("");
++        let outcome = superbird::check_network_request(engine, url, source_url, request_type, method);
++        ContentBlockerMatchResult {
++            matched: outcome.matched,
++            important: outcome.important,
++            redirect_data_url: string_to_ffi(outcome.redirect_data_url),
++            rewritten_url: string_to_ffi(outcome.rewritten_url),
++        }
++    })
++}
++
++#[unsafe(no_mangle)]
++pub extern "C" fn rust_content_blocker_csp_directives(
++    engine: Option<&ContentBlockerEngine>,
++    url: ak::Span<'_, u8>,
++    source_url: ak::Span<'_, u8>,
++    request_type: ak::Span<'_, u8>,
++) -> ContentBlockerString {
++    abort_on_panic(|| {
++        let Some(engine) = engine else {
++            return string_to_ffi(String::new());
++        };
++        let Some(url) = as_str(url) else {
++            return string_to_ffi(String::new());
++        };
++        let Some(source_url) = as_str(source_url) else {
++            return string_to_ffi(String::new());
++        };
++        let Some(request_type) = as_str(request_type) else {
++            return string_to_ffi(String::new());
++        };
++        string_to_ffi(superbird::csp_directives_for_url(
++            engine,
++            url,
++            source_url,
++            request_type,
++        ))
++    })
++}
++
+ /// # Safety
+ /// - `engine` must be null or a valid pointer returned by `rust_content_blocker_create`
+ #[unsafe(no_mangle)]
+diff --git a/Libraries/LibWeb/Fetch/Fetching/Fetching.cpp b/Libraries/LibWeb/Fetch/Fetching/Fetching.cpp
+index 619973f2..ee408b20 100644
+--- a/Libraries/LibWeb/Fetch/Fetching/Fetching.cpp
++++ b/Libraries/LibWeb/Fetch/Fetching/Fetching.cpp
+@@ -22,6 +22,7 @@
+ #include <LibRequests/Request.h>
+ #include <LibRequests/RequestTimingInfo.h>
+ #include <LibTextCodec/Encoder.h>
++#include <LibURL/Parser.h>
+ #include <LibWeb/Bindings/PrincipalHostDefined.h>
+ #include <LibWeb/ContentSecurityPolicy/BlockingAlgorithms.h>
+ #include <LibWeb/DOM/Document.h>
+@@ -58,6 +59,7 @@
+ #include <LibWeb/Fetch/Infrastructure/Task.h>
+ #include <LibWeb/FileAPI/Blob.h>
+ #include <LibWeb/FileAPI/BlobURLStore.h>
++#include <LibWeb/Loader/ContentBlocker.h>
+ #include <LibWeb/HTML/EventLoop/EventLoop.h>
+ #include <LibWeb/HTML/LocalNavigable.h>
+ #include <LibWeb/HTML/PreloadEntry.h>
+@@ -707,6 +709,39 @@ GC::Ptr<PendingResponse> main_fetch(JS::Realm& realm, Infrastructure::FetchParam
+     // 10. Set request’s current URL’s scheme to "https" if all of the following conditions are true:
+     upgrade_request_to_https_for_known_hsts_host_if_appropriate(Bindings::principal_host_defined_page(realm), *request);
+ 
++    if (ContentBlocker::the().has_rules() && ContentBlocker::the().is_ubo_mode()
++        && (request->current_url().scheme() == "http"sv || request->current_url().scheme() == "https"sv)) {
++        Optional<URL::URL> top_level_creation_url;
++        if (auto const& reserved_client = request->reserved_client_snapshot())
++            top_level_creation_url = reserved_client->top_level_creation_url;
++        else if (auto const& client = request->client_snapshot())
++            top_level_creation_url = client->top_level_creation_url;
++        if (!top_level_creation_url.has_value())
++            top_level_creation_url = request->current_url();
++
++        auto& page = Bindings::principal_host_defined_page(realm);
++        if (page.content_blocking_enabled_for_url(top_level_creation_url)) {
++            URL::URL source_url = request->current_url();
++            if ((!request->destination().has_value() || *request->destination() != Infrastructure::Request::Destination::Document)
++                && request->client_snapshot()) {
++                source_url = request->client_snapshot()->content_blocker_source_url;
++            }
++            auto match = ContentBlocker::the().check_request(
++                request->current_url(),
++                source_url,
++                request->destination(),
++                request->initiator_type(),
++                request->mode(),
++                request->method());
++            if (match.rewritten_url.has_value()) {
++                if (auto rewritten = URL::Parser::basic_parse(*match.rewritten_url);
++                    rewritten.has_value() && (rewritten->scheme() == "http"sv || rewritten->scheme() == "https"sv)) {
++                    request->current_url() = rewritten.release_value();
++                }
++            }
++        }
++    }
++
+     auto get_response = GC::create_function<GC::Ref<PendingResponse>()>(GC::Heap::the(), GC::captures(realm, NonnullRefPtr { fetch_params }, fetch_params.controller(), request), [](auto& realm, NonnullRefPtr<Infrastructure::FetchParams const>& fetch_params, GC::Ref<Infrastructure::FetchController>& controller, NonnullRefPtr<Infrastructure::Request>& request) -> GC::Ref<PendingResponse> {
+         dbgln_if(WEB_FETCH_DEBUG, "Fetch: Running 'main fetch' get_response() function");
+         auto const* origin = request->origin().get_pointer<URL::Origin>();
+@@ -2950,6 +2985,46 @@ GC::Ref<PendingResponse> nonstandard_resource_loader_file_or_http_network_fetch(
+ 
+     auto pending_response = PendingResponse::create(fetch_params);
+ 
++    if (ContentBlocker::the().has_rules() && ContentBlocker::the().is_ubo_mode()) {
++        auto page = load_request.page();
++        if (!page || page->content_blocking_enabled_for_url(load_request.top_level_creation_url())) {
++            auto source_url = load_request.source_url().value_or(request->current_url());
++            auto match = ContentBlocker::the().check_request(
++                request->current_url(),
++                source_url,
++                request->destination(),
++                request->initiator_type(),
++                request->mode(),
++                request->method());
++            if (match.redirect_data_url.has_value()) {
++                if (auto redirect_url = URL::Parser::basic_parse(*match.redirect_data_url); redirect_url.has_value()) {
++                    if (auto data_url_struct = Infrastructure::process_data_url(*redirect_url); !data_url_struct.is_error()) {
++                        auto response = Infrastructure::Response::create();
++                        response->set_status(200);
++                        response->set_status_message("OK"sv);
++                        response->set_url_list(request->url_list());
++                        response->header_list()->append(HTTP::Header::isomorphic_encode("Content-Type"sv, data_url_struct.value().mime_type.serialized()));
++                        if (request->mode() == Infrastructure::Request::Mode::CORS) {
++                            if (include_credentials == HTTP::Cookie::IncludeCredentials::Yes) {
++                                if (auto const* origin = request->origin().get_pointer<URL::Origin>()) {
++                                    response->header_list()->append(HTTP::Header::isomorphic_encode("Access-Control-Allow-Origin"sv, origin->serialize()));
++                                    response->header_list()->append(HTTP::Header::isomorphic_encode("Access-Control-Allow-Credentials"sv, "true"sv));
++                                }
++                            } else {
++                                response->header_list()->append(HTTP::Header::isomorphic_encode("Access-Control-Allow-Origin"sv, "*"sv));
++                            }
++                        }
++                        response->set_body(Infrastructure::byte_sequence_as_response_body(data_url_struct.value().body));
++                        if (page)
++                            page->client().page_did_block_resource(request->current_url(), "Redirect"sv);
++                        pending_response->resolve(response);
++                        return pending_response;
++                    }
++                }
++            }
++        }
++    }
++
+     if constexpr (WEB_FETCH_DEBUG) {
+         dbgln("Fetch: Invoking ResourceLoader");
+         log_load_request(load_request);
+diff --git a/Libraries/LibWeb/HTML/LocalNavigable.cpp b/Libraries/LibWeb/HTML/LocalNavigable.cpp
+index f32af85d..ba87840f 100644
+--- a/Libraries/LibWeb/HTML/LocalNavigable.cpp
++++ b/Libraries/LibWeb/HTML/LocalNavigable.cpp
+@@ -26,8 +26,10 @@
+ #include <LibWeb/Compositor/RenderClock.h>
+ #include <LibWeb/ContentSecurityPolicy/BlockingAlgorithms.h>
+ #include <LibWeb/ContentSecurityPolicy/Directives/DirectiveOperations.h>
++#include <LibWeb/ContentSecurityPolicy/Policy.h>
+ #include <LibWeb/ContentSecurityPolicy/PolicyList.h>
+ #include <LibWeb/ContentSecurityPolicy/Violation.h>
++#include <LibWeb/Loader/ContentBlocker.h>
+ #include <LibWeb/DOM/Document.h>
+ #include <LibWeb/DOM/DocumentFragment.h>
+ #include <LibWeb/DOM/DocumentLoading.h>
+@@ -2456,6 +2458,43 @@ static void perform_navigation_params_fetch(JS::Realm& realm, GC::Ref<Navigation
+         // 9. Set responsePolicyContainer to the result of creating a policy container from a fetch response given response and request's reserved client.
+         state_holder->response_policy_container = create_a_policy_container_from_a_fetch_response(*state_holder->response, state_holder->reserved_client);
+ 
++        if (ContentBlocker::the().has_rules() && ContentBlocker::the().is_ubo_mode()
++            && !state_holder->response->is_network_error() && state_holder->response->url().has_value()) {
++            auto const& response_url = *state_holder->response->url();
++            Optional<URL::URL> top_level_url;
++            if (state_holder->navigable->is_top_level_traversable())
++                top_level_url = response_url;
++            else if (state_holder->reserved_client && state_holder->reserved_client->top_level_creation_url.has_value())
++                top_level_url = state_holder->reserved_client->top_level_creation_url;
++            else
++                top_level_url = response_url;
++
++            if (state_holder->navigable->page().content_blocking_enabled_for_url(top_level_url)) {
++                URL::URL source_url = response_url;
++                auto resource_type = ContentBlocker::ResourceType::Document;
++                if (!state_holder->navigable->is_top_level_traversable()) {
++                    resource_type = ContentBlocker::ResourceType::Subdocument;
++                    if (auto* parent = as_if<LocalNavigable>(state_holder->navigable->parent().ptr()); parent && parent->active_document())
++                        source_url = parent->active_document()->url();
++                    else if (top_level_url.has_value())
++                        source_url = *top_level_url;
++                }
++                if (auto csp_header = ContentBlocker::the().csp_directives_for_url(response_url, source_url, resource_type); csp_header.has_value()) {
++                    csp_header->bytes_as_string_view().for_each_split_view(',', SplitBehavior::Nothing, [&](StringView part) {
++                        auto trimmed = part.trim_whitespace();
++                        if (trimmed.is_empty())
++                            return;
++                        auto policy = ContentSecurityPolicy::Policy::parse_a_serialized_csp(
++                            ByteString { trimmed },
++                            ContentSecurityPolicy::Policy::Source::Header,
++                            ContentSecurityPolicy::Policy::Disposition::Enforce);
++                        policy->set_self_origin(response_url.origin());
++                        state_holder->response_policy_container->csp_list.enforce_policy(move(policy));
++                    });
++                }
++            }
++        }
++
+         // 10. Set finalSandboxFlags to the union of targetSnapshotParams's sandboxing flags and responsePolicyContainer's CSP list's CSP-derived sandboxing flags.
+         state_holder->final_sandbox_flags = state_holder->target_snapshot_params.sandboxing_flags | state_holder->response_policy_container->csp_list.csp_derived_sandboxing_flags();
+ 
+diff --git a/Libraries/LibWeb/Loader/ContentBlocker.cpp b/Libraries/LibWeb/Loader/ContentBlocker.cpp
+index 58716b45..4d578fd1 100644
+--- a/Libraries/LibWeb/Loader/ContentBlocker.cpp
++++ b/Libraries/LibWeb/Loader/ContentBlocker.cpp
+@@ -69,6 +69,21 @@ static ByteString serialized_url_for_matching(URL::URL const& url)
+     return serialized_url(url);
+ }
+ 
++static Optional<String> take_rust_optional_string(ContentBlocking::FFI::ContentBlockerString rust_string)
++{
++    if (!rust_string.data)
++        return {};
++
++    ArmedScopeGuard free_string = [&] {
++        ContentBlocking::FFI::rust_content_blocker_free_string(rust_string.data, rust_string.length);
++    };
++
++    auto maybe_string = String::from_utf8({ reinterpret_cast<char const*>(rust_string.data), rust_string.length });
++    if (maybe_string.is_error() || maybe_string.value().is_empty())
++        return {};
++    return maybe_string.release_value();
++}
++
+ static Utf16String take_rust_utf16_string(ContentBlocking::FFI::ContentBlockerString rust_string)
+ {
+     if (!rust_string.data)
+@@ -210,6 +225,67 @@ bool ContentBlocker::is_filtered(URL::URL const& url, URL::URL const& source_url
+         request_type.bytes());
+ }
+ 
++ContentBlocker::MatchResult ContentBlocker::check_request(URL::URL const& url, URL::URL const& source_url, Optional<Fetch::Infrastructure::Request::Destination> const& destination, Optional<Fetch::Infrastructure::Request::InitiatorType> const& initiator_type, Fetch::Infrastructure::Request::Mode mode, StringView method) const
++{
++    return check_request(url, source_url_for_matching(source_url), resource_type_from_fetch_metadata(destination, initiator_type, mode), method);
++}
++
++ContentBlocker::MatchResult ContentBlocker::check_request(URL::URL const& url, URL::URL const& source_url, ResourceType resource_type, StringView method) const
++{
++    if (!has_rules() || url.scheme() == "data"sv)
++        return {};
++
++    auto url_string = serialized_url_for_matching(url);
++    auto normalized_source_url = source_url_for_matching(source_url);
++    auto source_url_string = serialized_url_for_matching(normalized_source_url);
++    auto request_type = resource_type_to_adblock_request_type(resource_type);
++
++    MutexLocker locker(m_mutex);
++    auto* engine = m_engine.load();
++    if (!engine)
++        return {};
++
++    auto raw = ContentBlocking::FFI::rust_content_blocker_check_request(
++        engine,
++        url_string.bytes(),
++        source_url_string.bytes(),
++        request_type.bytes(),
++        method.bytes());
++
++    MatchResult result;
++    result.matched = raw.matched;
++    result.important = raw.important;
++    result.redirect_data_url = take_rust_optional_string(raw.redirect_data_url);
++    auto rewritten = take_rust_optional_string(raw.rewritten_url);
++    if (rewritten.has_value() && (url.scheme() == "http"sv || url.scheme() == "https"sv))
++        result.rewritten_url = move(rewritten);
++    return result;
++}
++
++Optional<String> ContentBlocker::csp_directives_for_url(URL::URL const& url, URL::URL const& source_url, ResourceType resource_type) const
++{
++    if (!has_rules() || !is_ubo_mode())
++        return {};
++    if (url.scheme() != "http"sv && url.scheme() != "https"sv)
++        return {};
++
++    auto url_string = serialized_url_for_matching(url);
++    auto normalized_source_url = source_url_for_matching(source_url);
++    auto source_url_string = serialized_url_for_matching(normalized_source_url);
++    auto request_type = resource_type_to_adblock_request_type(resource_type);
++
++    MutexLocker locker(m_mutex);
++    auto* engine = m_engine.load();
++    if (!engine)
++        return {};
++
++    return take_rust_optional_string(ContentBlocking::FFI::rust_content_blocker_csp_directives(
++        engine,
++        url_string.bytes(),
++        source_url_string.bytes(),
++        request_type.bytes()));
++}
++
+ Utf16String ContentBlocker::cosmetic_style_sheet_for_url(URL::URL const& url) const
+ {
+     return cosmetic_style_sheet_for_url(url, {}, {});
+diff --git a/Libraries/LibWeb/Loader/ContentBlocker.h b/Libraries/LibWeb/Loader/ContentBlocker.h
+index b8c299d0..02df6f07 100644
+--- a/Libraries/LibWeb/Loader/ContentBlocker.h
++++ b/Libraries/LibWeb/Loader/ContentBlocker.h
+@@ -47,9 +47,19 @@ public:
+     bool has_cosmetic_rules() const { return m_has_cosmetic_rules.load(AK::MemoryOrder::memory_order_relaxed); }
+     bool is_ubo_mode() const { return m_is_ubo_mode.load(AK::MemoryOrder::memory_order_relaxed); }
+ 
++    struct MatchResult {
++        bool matched { false };
++        bool important { false };
++        Optional<String> redirect_data_url;
++        Optional<String> rewritten_url;
++    };
++
+     bool is_filtered(URL::URL const&) const;
+     bool is_filtered(URL::URL const&, URL::URL const& source_url, ResourceType) const;
+     bool is_filtered(URL::URL const&, URL::URL const& source_url, Optional<Fetch::Infrastructure::Request::Destination> const&, Optional<Fetch::Infrastructure::Request::InitiatorType> const&, Fetch::Infrastructure::Request::Mode) const;
++    MatchResult check_request(URL::URL const&, URL::URL const& source_url, ResourceType, StringView method = "GET"sv) const;
++    MatchResult check_request(URL::URL const&, URL::URL const& source_url, Optional<Fetch::Infrastructure::Request::Destination> const&, Optional<Fetch::Infrastructure::Request::InitiatorType> const&, Fetch::Infrastructure::Request::Mode, StringView method = "GET"sv) const;
++    Optional<String> csp_directives_for_url(URL::URL const&, URL::URL const& source_url, ResourceType) const;
+     ErrorOr<void> set_patterns(ReadonlySpan<String>);
+     ErrorOr<void> set_rules_from_bytes(ReadonlyBytes);
+ 
+diff --git a/Libraries/LibWeb/WebSockets/WebSocket.cpp b/Libraries/LibWeb/WebSockets/WebSocket.cpp
+index fe263fa8..063a7d25 100644
+--- a/Libraries/LibWeb/WebSockets/WebSocket.cpp
++++ b/Libraries/LibWeb/WebSockets/WebSocket.cpp
+@@ -37,6 +37,7 @@
+ #include <LibWeb/HTML/Scripting/Environments.h>
+ #include <LibWeb/HTML/WindowOrWorkerGlobalScope.h>
+ #include <LibWeb/HighResolutionTime/TimeOrigin.h>
++#include <LibWeb/Loader/ContentBlocker.h>
+ #include <LibWeb/Loader/LoaderConfig.h>
+ #include <LibWeb/Loader/ResourceLoader.h>
+ #include <LibWeb/MixedContent/AbstractOperations.h>
+@@ -224,6 +225,13 @@ ErrorOr<void> WebSocket::establish_web_socket_connection(URL::URL const& url_rec
+     auto connection_url = request->current_url();
+     connection_url.set_scheme(connection_url.scheme() == "http"sv ? "ws"sv : "wss"sv);
+ 
++    auto& content_blocking_page = Bindings::principal_host_defined_page(client.realm());
++    if (content_blocking_page.content_blocking_enabled_for_url(client.top_level_creation_url)
++        && ContentBlocker::the().is_filtered(connection_url, client.creation_url, ContentBlocker::ResourceType::WebSocket)) {
++        content_blocking_page.client().page_did_block_resource(connection_url, "WebSocket"sv);
++        return Error::from_string_literal("WebSocket connection was blocked");
++    }
++
+     if (m_has_disappeared)
+         return Error::from_string_literal("The document of the WebSocket was unloaded before it connected");
+ 
