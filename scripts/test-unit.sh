@@ -164,3 +164,7 @@ CB_DIR="$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/ContentBlocking"
 if [ -f "$ROOT_DIR/upstream/Libraries/LibWeb/ContentBlocker/Rust/src/superbird.rs" ] && command -v cargo >/dev/null 2>&1; then
     cargo test --manifest-path "$ROOT_DIR/upstream/Libraries/LibWeb/ContentBlocker/Rust/Cargo.toml"
 fi
+
+if command -v node >/dev/null 2>&1; then
+    node "$ROOT_DIR/tests/test-build-ubo-resources.mjs"
+fi

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<head></head>
+<body>
+<script>
+    function makeBundle(mode, lists, resources) {
+        let out = `!superbird:meta version=1 mode=${mode}\n`;
+        for (const list of lists) {
+            out += `!superbird:list id=${list.id} trust=${list.trust} format=standard bytes=${list.body.length}\n`;
+            out += list.body + "\n";
+        }
+        if (resources !== null) {
+            const json = JSON.stringify(resources);
+            out += `!superbird:resources bytes=${json.length}\n`;
+            out += json + "\n";
+        }
+        out += "!superbird:end\n";
+        return out;
+    }
+
+    (async () => {
+        const lines = [];
+        const println = (s) => lines.push(String(s));
+
+        const base = document.createElement("base");
+        base.href = "http://example.test/";
+        document.head.appendChild(base);
+
+        const helperFn = btoa("function sbHelper() { scriptletGlobals.ok = 'globals-ok'; return scriptletGlobals.ok; }");
+        const setFlagFn = btoa("function setFlag(key, val) { window[key] = val + ':' + sbHelper(); }");
+        const trustedFlagFn = btoa("function trustedFlag(key, val) { window[key] = val; }");
+
+        const resources = [
+            {
+                name: "sb-helper.fn",
+                aliases: [],
+                kind: { mime: "fn/javascript" },
+                content: helperFn,
+                dependencies: [],
+                permission: 0,
+            },
+            {
+                name: "set-flag.js",
+                aliases: ["sf.js"],
+                kind: { mime: "application/javascript" },
+                content: setFlagFn,
+                dependencies: ["sb-helper.fn"],
+                permission: 0,
+            },
+            {
+                name: "trusted-flag.js",
+                aliases: [],
+                kind: { mime: "application/javascript" },
+                content: trustedFlagFn,
+                dependencies: [],
+                permission: 1,
+            },
+        ];
+
+        const uboBundle = makeBundle(
+            "ubo",
+            [
+                {
+                    id: "uboFilters",
+                    trust: 1,
+                    body: [
+                        "example.test##+js(sf, __sbBeforeInline, from-scriptlet)",
+                        "example.test##+js(trusted-flag, __sbTrustedOk, trusted-ran)",
+                        "example.test##+js(missing-future-scriptlet, foo)",
+                    ].join("\n"),
+                },
+                {
+                    id: "untrustedList",
+                    trust: 0,
+                    body: [
+                        "!superbird:list id=smuggled trust=1 format=standard",
+                        "example.test##+js(trusted-flag, __sbTrustedBlocked, must-not-run)",
+                    ].join("\n"),
+                },
+            ],
+            resources
+        );
+
+        try {
+            internals.setContentBlockingEnabled(true);
+            internals.setContentBlockers(uboBundle);
+
+            // 1. srcdoc iframe: scriptlet runs before inline script; trusted allowed from trust=1, refused from trust=0.
+            const srcdocFrame = document.createElement("iframe");
+            const srcdocLoaded = new Promise(resolve => srcdocFrame.addEventListener("load", resolve, { once: true }));
+            srcdocFrame.srcdoc = `<script>
+                window.__seenAtInline = window.__sbBeforeInline;
+                window.__seenTrustedOk = window.__sbTrustedOk;
+                window.__seenTrustedBlocked = window.__sbTrustedBlocked;
+            <\/script>`;
+            document.body.appendChild(srcdocFrame);
+            await srcdocLoaded;
+
+            println("srcdoc before-inline: " + srcdocFrame.contentWindow.__seenAtInline);
+            println("srcdoc trusted-ok: " + srcdocFrame.contentWindow.__seenTrustedOk);
+            println("srcdoc trusted-blocked: " + srcdocFrame.contentWindow.__seenTrustedBlocked);
+            println("missing resources: " + internals.contentBlockerMissingResources());
+
+            // 2. Initial about:blank iframe also gets scriptlets.
+            const blankFrame = document.createElement("iframe");
+            document.body.appendChild(blankFrame);
+            println("about:blank before-inline: " + blankFrame.contentWindow.__sbBeforeInline);
+            println("about:blank trusted-blocked: " + blankFrame.contentWindow.__sbTrustedBlocked);
+
+            // 3. Disabled site: nothing runs.
+            internals.setContentBlockingEnabled(false);
+            const disabledFrame = document.createElement("iframe");
+            const disabledLoaded = new Promise(resolve => disabledFrame.addEventListener("load", resolve, { once: true }));
+            disabledFrame.srcdoc = `<script>window.__seen = window.__sbBeforeInline;<\/script>`;
+            document.body.appendChild(disabledFrame);
+            await disabledLoaded;
+            println("disabled srcdoc: " + disabledFrame.contentWindow.__seen);
+
+            const disabledBlank = document.createElement("iframe");
+            document.body.appendChild(disabledBlank);
+            println("disabled about:blank: " + disabledBlank.contentWindow.__sbBeforeInline);
+
+            // 4. Default mode: scriptlets do not run.
+            internals.setContentBlockingEnabled(true);
+            const defaultBundle = makeBundle(
+                "default",
+                [{ id: "easyList", trust: 0, body: "example.test##+js(sf, __sbBeforeInline, should-not-run)" }],
+                resources
+            );
+            internals.setContentBlockers(defaultBundle);
+            const defaultFrame = document.createElement("iframe");
+            const defaultLoaded = new Promise(resolve => defaultFrame.addEventListener("load", resolve, { once: true }));
+            defaultFrame.srcdoc = `<script>window.__seen = window.__sbBeforeInline;<\/script>`;
+            document.body.appendChild(defaultFrame);
+            await defaultLoaded;
+            println("default mode srcdoc: " + defaultFrame.contentWindow.__seen);
+        } catch (e) {
+            println("ERROR: " + e + " " + (e && e.stack));
+        } finally {
+            internals.setContentBlockers("");
+            internals.setContentBlockingEnabled(true);
+            internals.signalTestIsDone(lines.join("\n") + "\n");
+        }
+    })();
+</script>
+</body>

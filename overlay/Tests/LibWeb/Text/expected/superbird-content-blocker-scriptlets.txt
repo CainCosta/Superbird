@@ -1,0 +1,9 @@
+srcdoc before-inline: from-scriptlet:globals-ok
+srcdoc trusted-ok: trusted-ran
+srcdoc trusted-blocked: undefined
+missing resources: ["missing-future-scriptlet.js"]
+about:blank before-inline: from-scriptlet:globals-ok
+about:blank trusted-blocked: undefined
+disabled srcdoc: undefined
+disabled about:blank: undefined
+default mode srcdoc: undefined

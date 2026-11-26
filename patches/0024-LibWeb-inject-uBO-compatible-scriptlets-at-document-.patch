@@ -1,0 +1,289 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 19:02:57 -0600
+Subject: [PATCH] LibWeb: inject uBO-compatible scriptlets at document start
+ across all frames
+
+
+diff --git a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
+index f7dbe92a..5e0a3187 100644
+--- a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
++++ b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
+@@ -29,6 +29,7 @@ pub struct ContentBlockerEngine {
+     engine: adblock::engine::Engine,
+     generic_selector_list_rules: GenericSelectorListRules,
+     is_ubo_mode: bool,
++    missing_resources: std::sync::Arc<std::sync::Mutex<HashSet<String>>>,
+ }
+ 
+ #[derive(Default)]
+@@ -364,6 +365,7 @@ pub extern "C" fn rust_content_blocker_create(rules: ak::Span<'_, u8>) -> *mut C
+             engine,
+             generic_selector_list_rules,
+             is_ubo_mode: false,
++            missing_resources: std::sync::Arc::new(std::sync::Mutex::new(HashSet::new())),
+         };
+         Box::into_raw(Box::new(engine))
+     })
+@@ -374,6 +376,34 @@ pub extern "C" fn rust_content_blocker_is_ubo_mode(engine: Option<&ContentBlocke
+     abort_on_panic(|| engine.is_some_and(|engine| engine.is_ubo_mode))
+ }
+ 
++#[unsafe(no_mangle)]
++pub extern "C" fn rust_content_blocker_injected_script(
++    engine: Option<&ContentBlockerEngine>,
++    url: ak::Span<'_, u8>,
++) -> ContentBlockerString {
++    abort_on_panic(|| {
++        let Some(engine) = engine else {
++            return string_to_ffi(String::new());
++        };
++        let Some(url) = as_str(url) else {
++            return string_to_ffi(String::new());
++        };
++        string_to_ffi(superbird::injected_script_for_url(engine, url))
++    })
++}
++
++#[unsafe(no_mangle)]
++pub extern "C" fn rust_content_blocker_missing_resources(
++    engine: Option<&ContentBlockerEngine>,
++) -> ContentBlockerString {
++    abort_on_panic(|| {
++        let Some(engine) = engine else {
++            return string_to_ffi("[]".to_string());
++        };
++        string_to_ffi(superbird::missing_resources_json(engine))
++    })
++}
++
+ /// # Safety
+ /// - `engine` must be null or a valid pointer returned by `rust_content_blocker_create`
+ #[unsafe(no_mangle)]
+diff --git a/Libraries/LibWeb/DOM/Document.cpp b/Libraries/LibWeb/DOM/Document.cpp
+index d4058070..11bc5465 100644
+--- a/Libraries/LibWeb/DOM/Document.cpp
++++ b/Libraries/LibWeb/DOM/Document.cpp
+@@ -1203,6 +1203,38 @@ void Document::invalidate_content_blocker_style_sheet()
+     m_content_blocker_style_sheet_checked_ids.clear();
+ }
+ 
++void Document::run_content_blocker_scriptlets()
++{
++    if (m_has_run_content_blocker_scriptlets)
++        return;
++    m_has_run_content_blocker_scriptlets = true;
++
++    if (is_decoded_svg() || !content_blocking_enabled())
++        return;
++
++    auto& blocker = ContentBlocker::the();
++    if (!blocker.has_rules() || !blocker.is_ubo_mode())
++        return;
++
++    auto& settings = relevant_settings_object();
++    if (HTML::is_scripting_disabled(settings))
++        return;
++
++    auto script_source = blocker.injected_script_for_url(fallback_base_url());
++    if (script_source.is_empty())
++        return;
++
++    HTML::TemporaryExecutionContext execution_context { settings };
++    auto script = HTML::ClassicScript::create(
++        "superbird-content-blocker-scriptlet"sv,
++        move(script_source),
++        settings,
++        fallback_base_url(),
++        1,
++        HTML::ClassicScript::MutedErrors::Yes);
++    (void)script->run(HTML::ClassicScript::RethrowErrors::No);
++}
++
+ bool Document::content_blocker_style_sheet_may_need_refresh_for_class_or_id(Utf16FlyString const* id, ReadonlySpan<Utf16FlyString> class_names)
+ {
+     if (is_decoded_svg() || !m_content_blocker_style_sheet.has_value())
+@@ -8393,6 +8425,8 @@ void Document::update_for_history_step_application(NonnullRefPtr<HTML::SessionHi
+         if (!scrolling_blocked_in_new_document)
+             try_to_scroll_to_the_fragment(allow_text_directive_scroll);
+ 
++        run_content_blocker_scriptlets();
++
+         // 4. At this point scripts may run for the newly-created document document.
+         set_ready_to_run_scripts();
+     }
+diff --git a/Libraries/LibWeb/DOM/Document.h b/Libraries/LibWeb/DOM/Document.h
+index 348eb3d9..a437a143 100644
+--- a/Libraries/LibWeb/DOM/Document.h
++++ b/Libraries/LibWeb/DOM/Document.h
+@@ -1868,6 +1868,7 @@ public:
+     Utf16String const& content_blocker_style_sheet();
+     void invalidate_content_blocker_style_sheet();
+     bool content_blocker_style_sheet_may_need_refresh_for_class_or_id(Utf16FlyString const* id, ReadonlySpan<Utf16FlyString> class_names);
++    void run_content_blocker_scriptlets();
+ 
+     void exit_pointer_lock();
+ 
+@@ -2535,6 +2536,7 @@ private:
+     // Class/id tokens already covered by the cached content blocker stylesheet.
+     HashTable<Utf16FlyString> m_content_blocker_style_sheet_checked_classes;
+     HashTable<Utf16FlyString> m_content_blocker_style_sheet_checked_ids;
++    bool m_has_run_content_blocker_scriptlets { false };
+ 
+     Optional<AK::UnixDateTime> m_last_modified;
+ 
+diff --git a/Libraries/LibWeb/HTML/LocalNavigable.cpp b/Libraries/LibWeb/HTML/LocalNavigable.cpp
+index 5458adfa..f32af85d 100644
+--- a/Libraries/LibWeb/HTML/LocalNavigable.cpp
++++ b/Libraries/LibWeb/HTML/LocalNavigable.cpp
+@@ -1202,6 +1202,9 @@ void LocalNavigable::initialize_navigable(NonnullRefPtr<DocumentState> document_
+     if (WebDriver::BiDi::is_active() && !is_top_level_traversable() && !is_stand_in)
+         WebDriver::BiDi::document_is_ready_for_scripts(document);
+ 
++    if (!is_top_level_traversable() && !is_stand_in)
++        document->run_content_blocker_scriptlets();
++
+     // A child navigable's first document became active before it had a navigable, so the page client hears of it here,
+     // as it hears of each document that later becomes active in the navigable.
+     if (!is_top_level_traversable() && !is_stand_in)
+diff --git a/Libraries/LibWeb/HTML/LocalTraversableNavigable.cpp b/Libraries/LibWeb/HTML/LocalTraversableNavigable.cpp
+index f54bbffe..3b644842 100644
+--- a/Libraries/LibWeb/HTML/LocalTraversableNavigable.cpp
++++ b/Libraries/LibWeb/HTML/LocalTraversableNavigable.cpp
+@@ -134,6 +134,8 @@ GC::Ref<LocalTraversableNavigable> LocalTraversableNavigable::create_for_new_web
+     if (WebDriver::BiDi::is_active())
+         WebDriver::BiDi::document_is_ready_for_scripts(*traversable->active_document());
+ 
++    traversable->active_document()->run_content_blocker_scriptlets();
++
+     return traversable;
+ }
+ 
+diff --git a/Libraries/LibWeb/Internals/Internals.cpp b/Libraries/LibWeb/Internals/Internals.cpp
+index 118e1bae..60df24c7 100644
+--- a/Libraries/LibWeb/Internals/Internals.cpp
++++ b/Libraries/LibWeb/Internals/Internals.cpp
+@@ -1544,20 +1544,25 @@ WebIDL::ExceptionOr<void> Internals::send_bad_ipc_message_for_testing(Utf16Strin
+ 
+ WebIDL::ExceptionOr<void> Internals::set_content_blockers(Utf16String const& patterns_source)
+ {
+-    Utf16StringBuilder patterns_builder;
+-
+-    patterns_source.for_each_split_view('\n', SplitBehavior::Nothing, [&](Utf16View line) {
+-        if (line.ends_with('\r'))
+-            line = line.substring_view(0, line.length_in_code_units() - 1);
+-        if (line.is_empty())
++    String patterns_utf8;
++    if (patterns_source.starts_with("!superbird:"_utf16)) {
++        patterns_utf8 = TRY_OR_THROW_OOM(window().principal_realm().vm(), patterns_source.utf16_view().to_utf8());
++    } else {
++        Utf16StringBuilder patterns_builder;
++
++        patterns_source.for_each_split_view('\n', SplitBehavior::Nothing, [&](Utf16View line) {
++            if (line.ends_with('\r'))
++                line = line.substring_view(0, line.length_in_code_units() - 1);
++            if (line.is_empty())
++                return IterationDecision::Continue;
++
++            patterns_builder.append(line);
++            patterns_builder.append("\n"_utf16);
+             return IterationDecision::Continue;
+-
+-        patterns_builder.append(line);
+-        patterns_builder.append("\n"_utf16);
+-        return IterationDecision::Continue;
+-    });
+-    auto patterns = patterns_builder.to_string();
+-    auto patterns_utf8 = TRY_OR_THROW_OOM(window().principal_realm().vm(), patterns.utf16_view().to_utf8());
++        });
++        auto patterns = patterns_builder.to_string();
++        patterns_utf8 = TRY_OR_THROW_OOM(window().principal_realm().vm(), patterns.utf16_view().to_utf8());
++    }
+ 
+     auto& blocker = ContentBlocker::the();
+     auto had_cosmetic_rules = blocker.has_cosmetic_rules();
+@@ -1571,6 +1576,11 @@ WebIDL::ExceptionOr<void> Internals::set_content_blockers(Utf16String const& pat
+     return {};
+ }
+ 
++Utf16String Internals::content_blocker_missing_resources()
++{
++    return ContentBlocker::the().missing_resources_json();
++}
++
+ WebIDL::ExceptionOr<void> Internals::set_site_compatibility_data(Utf16String const& source)
+ {
+     auto source_utf8 = TRY_OR_THROW_OOM(window().principal_realm().vm(), source.utf16_view().to_utf8());
+diff --git a/Libraries/LibWeb/Internals/Internals.h b/Libraries/LibWeb/Internals/Internals.h
+index f7cf6a7e..92a9710a 100644
+--- a/Libraries/LibWeb/Internals/Internals.h
++++ b/Libraries/LibWeb/Internals/Internals.h
+@@ -185,6 +185,7 @@ public:
+     void simulate_worker_request_server_connection_loss();
+     WebIDL::ExceptionOr<void> send_bad_ipc_message_for_testing(Utf16String const& kind);
+     WebIDL::ExceptionOr<void> set_content_blockers(Utf16String const& patterns);
++    Utf16String content_blocker_missing_resources();
+     WebIDL::ExceptionOr<void> set_site_compatibility_data(Utf16String const& source);
+     void set_content_blocking_enabled(bool enabled);
+     void begin_layout_trace(Bindings::LayoutTraceOptions const&);
+diff --git a/Libraries/LibWeb/Internals/Internals.idl b/Libraries/LibWeb/Internals/Internals.idl
+index 874f01b8..ed88794f 100644
+--- a/Libraries/LibWeb/Internals/Internals.idl
++++ b/Libraries/LibWeb/Internals/Internals.idl
+@@ -200,6 +200,7 @@ interface Internals {
+     undefined simulateWorkerRequestServerConnectionLoss();
+     undefined sendBadIpcMessageForTesting(DOMString kind);
+     undefined setContentBlockers(DOMString patterns);
++    DOMString contentBlockerMissingResources();
+     undefined setSiteCompatibilityData(DOMString source);
+     undefined setContentBlockingEnabled(boolean enabled);
+     // Traces the layout passes of the document until takeLayoutTrace(), and its layout tree builds where asked.
+diff --git a/Libraries/LibWeb/Loader/ContentBlocker.cpp b/Libraries/LibWeb/Loader/ContentBlocker.cpp
+index 48351e35..58716b45 100644
+--- a/Libraries/LibWeb/Loader/ContentBlocker.cpp
++++ b/Libraries/LibWeb/Loader/ContentBlocker.cpp
+@@ -271,6 +271,31 @@ bool ContentBlocker::has_generic_cosmetic_selectors_for_url(URL::URL const& url,
+         ids_bytes.bytes());
+ }
+ 
++Utf16String ContentBlocker::injected_script_for_url(URL::URL const& url) const
++{
++    if (!has_rules() || !is_ubo_mode())
++        return {};
++
++    auto url_string = serialized_url_for_matching(url);
++
++    MutexLocker locker(m_mutex);
++    auto* engine = m_engine.load();
++    if (!engine)
++        return {};
++    return take_rust_utf16_string(ContentBlocking::FFI::rust_content_blocker_injected_script(
++        engine,
++        url_string.bytes()));
++}
++
++Utf16String ContentBlocker::missing_resources_json() const
++{
++    MutexLocker locker(m_mutex);
++    auto* engine = m_engine.load();
++    if (!engine)
++        return "[]"_utf16;
++    return take_rust_utf16_string(ContentBlocking::FFI::rust_content_blocker_missing_resources(engine));
++}
++
+ ContentBlocker::ResourceType ContentBlocker::resource_type_from_fetch_metadata(Optional<Fetch::Infrastructure::Request::Destination> const& destination, Optional<Fetch::Infrastructure::Request::InitiatorType> const& initiator_type, Fetch::Infrastructure::Request::Mode mode)
+ {
+     using Fetch::Infrastructure::Request;
+diff --git a/Libraries/LibWeb/Loader/ContentBlocker.h b/Libraries/LibWeb/Loader/ContentBlocker.h
+index ee327a67..b8c299d0 100644
+--- a/Libraries/LibWeb/Loader/ContentBlocker.h
++++ b/Libraries/LibWeb/Loader/ContentBlocker.h
+@@ -56,6 +56,8 @@ public:
+     Utf16String cosmetic_style_sheet_for_url(URL::URL const&) const;
+     Utf16String cosmetic_style_sheet_for_url(URL::URL const&, ReadonlySpan<Utf16FlyString> classes, ReadonlySpan<Utf16FlyString> ids) const;
+     bool has_generic_cosmetic_selectors_for_url(URL::URL const&, ReadonlySpan<Utf16FlyString> classes, ReadonlySpan<Utf16FlyString> ids) const;
++    Utf16String injected_script_for_url(URL::URL const&) const;
++    Utf16String missing_resources_json() const;
+ 
+     static ResourceType resource_type_from_fetch_metadata(Optional<Fetch::Infrastructure::Request::Destination> const&, Optional<Fetch::Infrastructure::Request::InitiatorType> const&, Fetch::Infrastructure::Request::Mode);
+     static URL::URL source_url_for_matching(URL::URL const&);

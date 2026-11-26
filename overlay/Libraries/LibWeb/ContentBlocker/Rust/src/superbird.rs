@@ -4,10 +4,13 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 
 use adblock::lists::{FilterFormat, FilterSet, ParseOptions};
-use adblock::resources::{PermissionMask, Resource};
+use adblock::resources::{
+    InMemoryResourceStorage, PermissionMask, Resource, ResourceImpl, ResourceStorageBackend,
+};
 
 use crate::{ContentBlockerEngine, GenericSelectorListRules};
 
@@ -453,6 +456,28 @@ pub fn parse_bundle(input: &str) -> ParsedBundle<'_> {
     }
 }
 
+struct SuperbirdResourceStorage {
+    inner: InMemoryResourceStorage,
+    missing_resources: Arc<Mutex<HashSet<String>>>,
+}
+
+impl ResourceStorageBackend for SuperbirdResourceStorage {
+    fn get_resource(&self, resource_ident: &str) -> Option<ResourceImpl> {
+        let result = self.inner.get_resource(resource_ident);
+        if result.is_none() {
+            if let Ok(mut missing) = self.missing_resources.lock() {
+                if missing.insert(resource_ident.to_string()) {
+                    eprintln!(
+                        "[Superbird ContentBlocker] Missing uBO-compatible resource '{}' (skipped safely; resources may be stale or missing)",
+                        resource_ident
+                    );
+                }
+            }
+        }
+        result
+    }
+}
+
 pub fn create_engine(input: &str) -> ContentBlockerEngine {
     let bundle = parse_bundle(input);
     let mut filter_set = FilterSet::new(false);
@@ -489,30 +514,73 @@ pub fn create_engine(input: &str) -> ContentBlockerEngine {
     }
 
     let mut engine = adblock::engine::Engine::new_with_filter_set(filter_set);
+    let missing_resources = Arc::new(Mutex::new(HashSet::new()));
 
     if bundle.is_ubo_mode {
+        let mut storage = InMemoryResourceStorage::default();
         if let Some(resources_json) = bundle.resources_json {
             let trimmed = resources_json.trim();
             if !trimmed.is_empty() {
-                if let Ok(mut resources) = serde_json::from_str::<Vec<Resource>>(trimmed) {
-                    for resource in &mut resources {
-                        if resource.name.starts_with("trusted-")
-                            && resource.permission.to_bits() == 0
-                        {
-                            resource.permission = PermissionMask::from_bits(1);
+                match serde_json::from_str::<Vec<Resource>>(trimmed) {
+                    Ok(mut resources) => {
+                        for resource in &mut resources {
+                            if resource.name.starts_with("trusted-")
+                                && resource.permission.to_bits() == 0
+                            {
+                                resource.permission = PermissionMask::from_bits(1);
+                            }
                         }
+                        storage = InMemoryResourceStorage::from_resources(resources);
                     }
-                    engine.use_resources(resources);
+                    Err(err) => {
+                        eprintln!(
+                            "[Superbird ContentBlocker] Failed to parse uBO-compatible resources JSON (continuing without scriptlets/redirects): {}",
+                            err
+                        );
+                    }
                 }
             }
         }
+        engine.use_resource_storage(SuperbirdResourceStorage {
+            inner: storage,
+            missing_resources: Arc::clone(&missing_resources),
+        });
     }
 
     ContentBlockerEngine {
         engine,
         generic_selector_list_rules,
         is_ubo_mode: bundle.is_ubo_mode,
+        missing_resources,
     }
+}
+
+pub fn injected_script_for_url(engine: &ContentBlockerEngine, url: &str) -> String {
+    if !engine.is_ubo_mode {
+        return String::new();
+    }
+    let cosmetic = engine.engine.url_cosmetic_resources(url);
+    if cosmetic.injected_script.trim().is_empty() {
+        return String::new();
+    }
+
+    let mut out = String::with_capacity(cosmetic.injected_script.len() + 96);
+    out.push_str("(function() {\nconst scriptletGlobals = {};\ntry {\n");
+    out.push_str(&cosmetic.injected_script);
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push_str("} catch (_superbird_scriptlet_err) {}\n})();\n");
+    out
+}
+
+pub fn missing_resources_json(engine: &ContentBlockerEngine) -> String {
+    let mut names: Vec<String> = match engine.missing_resources.lock() {
+        Ok(guard) => guard.iter().cloned().collect(),
+        Err(_) => Vec::new(),
+    };
+    names.sort();
+    serde_json::to_string(&names).unwrap_or_else(|_| "[]".to_string())
 }
 
 #[cfg(test)]
@@ -760,5 +828,97 @@ example.com##+js(trusted-set-cookie)
             "!superbird:meta version=1 mode=ubo\n!superbird:list id=bad trust=1 format=standard bytes=999999999\nabc",
         );
         assert!(truncated.is_ubo_mode);
+    }
+
+    #[test]
+    fn injected_script_wraps_scriptlet_globals_and_skips_in_default_mode() {
+        let helper = base64_encode(b"function safeSelf() { return scriptletGlobals; }");
+        let scriptlet = base64_encode(
+            b"function setVal(name, val) { const g = safeSelf(); g.ran = true; window[name] = val; }",
+        );
+        let resources_json = serde_json::to_string(&vec![
+            serde_json::json!({
+                "name": "safe-self.fn",
+                "aliases": [],
+                "kind": { "mime": "fn/javascript" },
+                "content": helper,
+                "dependencies": [],
+                "permission": 0
+            }),
+            serde_json::json!({
+                "name": "set-val.js",
+                "aliases": ["sv.js"],
+                "kind": { "mime": "application/javascript" },
+                "content": scriptlet,
+                "dependencies": ["safe-self.fn"],
+                "permission": 0
+            }),
+        ])
+        .unwrap();
+
+        let mut ubo_bundle = String::from("!superbird:meta version=1 mode=ubo\n");
+        ubo_bundle.push_str(&make_bundle_list(
+            "uboFilters",
+            1,
+            "standard",
+            "example.com##+js(sv, __sb_flag, ok)\n",
+        ));
+        ubo_bundle.push_str(&make_bundle_resources(&resources_json));
+        ubo_bundle.push_str("!superbird:end\n");
+
+        let engine = create_engine(&ubo_bundle);
+        let script = injected_script_for_url(&engine, "https://example.com/watch");
+        assert!(script.contains("const scriptletGlobals = {};"));
+        assert!(script.contains("function safeSelf()"));
+        assert!(script.contains("setVal(\"__sb_flag\", \"ok\")"));
+        assert_eq!(missing_resources_json(&engine), "[]");
+
+        // Exception rule suppresses injection
+        let mut excepted = String::from("!superbird:meta version=1 mode=ubo\n");
+        excepted.push_str(&make_bundle_list(
+            "uboFilters",
+            1,
+            "standard",
+            "example.com##+js(sv, __sb_flag, ok)\nexample.com#@#+js(sv, __sb_flag, ok)\n",
+        ));
+        excepted.push_str(&make_bundle_resources(&resources_json));
+        excepted.push_str("!superbird:end\n");
+        let excepted_engine = create_engine(&excepted);
+        assert!(injected_script_for_url(&excepted_engine, "https://example.com/watch").is_empty());
+
+        // Default mode does not inject scriptlets
+        let mut default_bundle = String::from("!superbird:meta version=1 mode=default\n");
+        default_bundle.push_str(&make_bundle_list(
+            "easyList",
+            0,
+            "standard",
+            "example.com##+js(sv, __sb_flag, ok)\n",
+        ));
+        default_bundle.push_str(&make_bundle_resources(&resources_json));
+        default_bundle.push_str("!superbird:end\n");
+        let default_engine = create_engine(&default_bundle);
+        assert!(!default_engine.is_ubo_mode);
+        assert!(injected_script_for_url(&default_engine, "https://example.com/watch").is_empty());
+    }
+
+    #[test]
+    fn missing_scriptlet_fails_safely_and_records_missing_resource() {
+        let mut bundle = String::from("!superbird:meta version=1 mode=ubo\n");
+        bundle.push_str(&make_bundle_list(
+            "uboFilters",
+            1,
+            "standard",
+            "example.com##+js(future-brand-new-scriptlet, foo)\n",
+        ));
+        bundle.push_str(&make_bundle_resources("[]"));
+        bundle.push_str("!superbird:end\n");
+
+        let engine = create_engine(&bundle);
+        let script = injected_script_for_url(&engine, "https://example.com/");
+        assert!(script.is_empty());
+        assert_eq!(
+            missing_resources_json(&engine),
+            "[\"future-brand-new-scriptlet.js\"]"
+        );
     }
 }
