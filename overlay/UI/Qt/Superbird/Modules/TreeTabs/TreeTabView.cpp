@@ -78,6 +78,73 @@ QColor branch_color_to_qcolor(BranchColor color)
     return {};
 }
 
+// Mirrors Sidebery v5's tab surface styling (vars.styl / sidebar/tab.styl):
+//   - Hovered inactive tab: subtle translucent overlay (#ffffff16 dark / #00000012 light)
+//   - Active tab: lifted surface (#ffffff24 dark / #ffffff light) with soft drop shadow and 1px inset edge
+//     (and no extra hover wash on top of an already-active card)
+//   - Multi-selected tab: translucent selected fill + 1px accent inset border (2px when also active)
+static void paint_sidebery_tab_background(
+    QPainter& painter,
+    QRectF const& rect,
+    QPalette const& chrome_palette,
+    bool is_active,
+    bool is_hovered,
+    bool is_multi_selected)
+{
+    if (!is_active && !is_hovered && !is_multi_selected)
+        return;
+
+    auto const& colors = Theme::chrome(chrome_palette);
+    bool dark = Theme::is_dark(chrome_palette);
+
+    painter.save();
+    QPainterPath card_path;
+    card_path.addRoundedRect(rect, TREE_ROW_RADIUS, TREE_ROW_RADIUS);
+
+    if (is_active) {
+        // Soft drop shadow (Sidebery --active-el-shadow: 0 1px 4px -1px #00000048 / #00000052)
+        auto shadow_rect = rect.translated(0.0, 1.0);
+        QPainterPath outer_shadow;
+        outer_shadow.addRoundedRect(shadow_rect.adjusted(-0.5, 0.0, 0.5, 1.0), TREE_ROW_RADIUS + 0.5, TREE_ROW_RADIUS + 0.5);
+        QPainterPath inner_shadow;
+        inner_shadow.addRoundedRect(shadow_rect, TREE_ROW_RADIUS, TREE_ROW_RADIUS);
+        painter.fillPath(outer_shadow, QColor(0, 0, 0, dark ? 0x1E : 0x16));
+        painter.fillPath(inner_shadow, QColor(0, 0, 0, dark ? 0x2E : 0x20));
+
+        // Active surface (--active-el-bg: #ffffff24 dark / #ffffff light)
+        QColor active_fill = dark ? QColor(255, 255, 255, 0x24) : colors.toolbar;
+        painter.fillPath(card_path, active_fill);
+
+        // Crisp 1px inset border (--active-el-shadow inset 0 0 0 1px #ffffff08 / increased-contrast edge)
+        QColor edge = colors.active_tab_edge.alpha() > 0
+            ? colors.active_tab_edge
+            : (dark ? QColor(255, 255, 255, 0x12) : QColor(0, 0, 0, 0x14));
+        QPainterPath inset_path;
+        inset_path.addRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), TREE_ROW_RADIUS - 0.5, TREE_ROW_RADIUS - 0.5);
+        painter.setPen(QPen(edge, 1.0));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawPath(inset_path);
+    } else if (is_multi_selected) {
+        // Selected overlay (--frame-el-overlay-selected-bg: #ffffff24 dark / #00000012 light)
+        painter.fillPath(card_path, dark ? QColor(255, 255, 255, 0x24) : QColor(0, 0, 0, 0x12));
+    } else if (is_hovered) {
+        // Hover overlay (--frame-el-overlay-hover-bg: #ffffff16 dark / #00000012 light)
+        painter.fillPath(card_path, dark ? QColor(255, 255, 255, 0x16) : QColor(0, 0, 0, 0x12));
+    }
+
+    if (is_multi_selected) {
+        qreal border_width = is_active ? 2.0 : 1.0;
+        qreal inset = border_width / 2.0;
+        QPainterPath sel_path;
+        sel_path.addRoundedRect(rect.adjusted(inset, inset, -inset, -inset), TREE_ROW_RADIUS - inset, TREE_ROW_RADIUS - inset);
+        painter.setPen(QPen(Theme::accent(), border_width));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawPath(sel_path);
+    }
+
+    painter.restore();
+}
+
 TreeTabView::TreeTabView(TreeTabController& controller, QWidget* parent)
     : QAbstractScrollArea(parent)
     , m_controller(controller)
@@ -428,15 +495,7 @@ void TreeTabView::paint_pinned_region(QPainter& painter, PinnedLayout const& lay
         bool is_active = (tab == current_tab);
         bool is_hovered = (m_hover.is_pinned && m_hover.index == i);
 
-        if (is_active || is_hovered) {
-            QPainterPath path;
-            path.addRoundedRect(QRectF(rect), TREE_ROW_RADIUS, TREE_ROW_RADIUS);
-            painter.fillPath(path, is_active ? colors.toolbar : colors.hover);
-            if (is_active && colors.active_tab_edge.alpha() > 0) {
-                painter.setPen(QPen(colors.active_tab_edge, 1.0));
-                painter.drawPath(path);
-            }
-        }
+        paint_sidebery_tab_background(painter, QRectF(rect), chrome_palette, is_active, is_hovered, false);
 
         auto icon_rect = QRect(
             rect.center().x() - TREE_FAVICON_SIZE / 2,
@@ -486,24 +545,8 @@ void TreeTabView::paint_tree_row(QPainter& painter, int row_index, QRect const& 
     bool is_hovered = (!m_hover.is_pinned && m_hover.index == row_index);
     bool is_multi_selected = row.is_selected && m_controller.model().selected_count() > 1;
 
-    // 1. Row card background (active / multi-selected / hovered)
-    if (is_active || is_multi_selected || is_hovered) {
-        QPainterPath path;
-        path.addRoundedRect(QRectF(row_rect), TREE_ROW_RADIUS, TREE_ROW_RADIUS);
-        if (is_active) {
-            painter.fillPath(path, colors.toolbar);
-            if (colors.active_tab_edge.alpha() > 0) {
-                painter.setPen(QPen(colors.active_tab_edge, 1.0));
-                painter.drawPath(path);
-            }
-        } else if (is_multi_selected) {
-            auto tint = Theme::accent();
-            tint.setAlphaF(Theme::is_dark(chrome_palette) ? 0.24 : 0.16);
-            painter.fillPath(path, tint);
-        } else {
-            painter.fillPath(path, colors.hover);
-        }
-    }
+    // 1. Row card background (Sidebery-style active / multi-selected / hovered)
+    paint_sidebery_tab_background(painter, QRectF(row_rect), chrome_palette, is_active, is_hovered, is_multi_selected);
 
     // A branch color tag shows as a slim bar at the row's leading edge.
     if (row.color != BranchColor::None) {
