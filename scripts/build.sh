@@ -49,17 +49,38 @@ EOF
 fi
 
 echo "[superbird] Configuring ($PRESET) and staging vcpkg dependencies..."
-python3 - "$UPSTREAM_DIR" "$PRESET" <<'PY'
+# If this checkout is a linked git worktree of Superbird, reuse the main checkout's
+# upstream/Build/{caches,vcpkg-*} via LADYBIRD_MAIN_SOURCE_DIR so worktrees avoid cold
+# vcpkg rebuilds while keeping their own upstream/Build/<preset> isolated.
+MAIN_UPSTREAM_DIR="${LADYBIRD_MAIN_SOURCE_DIR:-$UPSTREAM_DIR}"
+if [[ -z "${LADYBIRD_MAIN_SOURCE_DIR:-}" ]]; then
+    GIT_DIR_ABS="$(git -C "$ROOT_DIR" rev-parse --path-format=absolute --git-dir 2>/dev/null || true)"
+    GIT_COMMON_ABS="$(git -C "$ROOT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    if [[ -n "$GIT_DIR_ABS" && -n "$GIT_COMMON_ABS" && "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]]; then
+        MAIN_ROOT="$(dirname "$GIT_COMMON_ABS")"
+        if [[ -d "$MAIN_ROOT/upstream" ]]; then
+            MAIN_UPSTREAM_DIR="$MAIN_ROOT/upstream"
+            echo "[superbird] Worktree detected; sharing vcpkg cache with $MAIN_UPSTREAM_DIR"
+        fi
+    fi
+fi
+
+export LADYBIRD_SOURCE_DIR="$UPSTREAM_DIR"
+export LADYBIRD_MAIN_SOURCE_DIR="$MAIN_UPSTREAM_DIR"
+
+python3 - "$UPSTREAM_DIR" "$MAIN_UPSTREAM_DIR" "$PRESET" <<'PY'
 import os, sys
-upstream, preset = sys.argv[1], sys.argv[2]
+upstream, main_upstream, preset = sys.argv[1], sys.argv[2], sys.argv[3]
 sys.path.insert(0, os.path.join(upstream, "Meta"))
 import ladybird
 from pathlib import Path
 from Utils.host_platform import Platform
 
 # upstream/ is a submodule, whose `.git` *file* ladybird.py mistakes for a git worktree
-# (and would then put vcpkg outside upstream/). Pin it to upstream/ itself.
-ladybird.find_main_ladybird_source_dir = lambda: Path(upstream).resolve()
+# (and would then put vcpkg outside upstream/). Pin it to the Superbird main checkout's
+# upstream/ directory (which is upstream/ itself in a normal clone, or the primary
+# checkout's upstream/ when running inside a linked Superbird git worktree).
+ladybird.find_main_ladybird_source_dir = lambda: Path(main_upstream).resolve()
 
 platform = Platform()
 cc, cxx = platform.default_compiler()
