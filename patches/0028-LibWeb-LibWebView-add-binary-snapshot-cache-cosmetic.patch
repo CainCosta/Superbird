@@ -6,7 +6,7 @@ Subject: [PATCH] LibWeb+LibWebView: add binary snapshot cache, cosmetic
 
 
 diff --git a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
-index 68cfbcdf..2c5f5113 100644
+index 68cfbcdf1..2c5f5113a 100644
 --- a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
 +++ b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
 @@ -37,8 +37,11 @@ pub struct ContentBlockerEngine {
@@ -78,7 +78,7 @@ index 68cfbcdf..2c5f5113 100644
  pub extern "C" fn rust_content_blocker_check_request(
      engine: Option<&ContentBlockerEngine>,
 diff --git a/Libraries/LibWeb/Internals/Internals.cpp b/Libraries/LibWeb/Internals/Internals.cpp
-index 60df24c7..22289fa7 100644
+index 01fa2c091..7a3b38ac9 100644
 --- a/Libraries/LibWeb/Internals/Internals.cpp
 +++ b/Libraries/LibWeb/Internals/Internals.cpp
 @@ -1581,6 +1581,16 @@ Utf16String Internals::content_blocker_missing_resources()
@@ -99,7 +99,7 @@ index 60df24c7..22289fa7 100644
  {
      auto source_utf8 = TRY_OR_THROW_OOM(window().principal_realm().vm(), source.utf16_view().to_utf8());
 diff --git a/Libraries/LibWeb/Internals/Internals.h b/Libraries/LibWeb/Internals/Internals.h
-index 92a9710a..3c04f590 100644
+index 368948cca..321781444 100644
 --- a/Libraries/LibWeb/Internals/Internals.h
 +++ b/Libraries/LibWeb/Internals/Internals.h
 @@ -186,6 +186,8 @@ public:
@@ -112,7 +112,7 @@ index 92a9710a..3c04f590 100644
      void set_content_blocking_enabled(bool enabled);
      void begin_layout_trace(Bindings::LayoutTraceOptions const&);
 diff --git a/Libraries/LibWeb/Internals/Internals.idl b/Libraries/LibWeb/Internals/Internals.idl
-index ed88794f..e2b502b2 100644
+index 472659a02..b1e5deba8 100644
 --- a/Libraries/LibWeb/Internals/Internals.idl
 +++ b/Libraries/LibWeb/Internals/Internals.idl
 @@ -201,6 +201,8 @@ interface Internals {
@@ -125,7 +125,7 @@ index ed88794f..e2b502b2 100644
      undefined setContentBlockingEnabled(boolean enabled);
      // Traces the layout passes of the document until takeLayoutTrace(), and its layout tree builds where asked.
 diff --git a/Libraries/LibWeb/Loader/ContentBlocker.cpp b/Libraries/LibWeb/Loader/ContentBlocker.cpp
-index 4d578fd1..47967c64 100644
+index 4d578fd17..47967c648 100644
 --- a/Libraries/LibWeb/Loader/ContentBlocker.cpp
 +++ b/Libraries/LibWeb/Loader/ContentBlocker.cpp
 @@ -372,6 +372,24 @@ Utf16String ContentBlocker::missing_resources_json() const
@@ -154,7 +154,7 @@ index 4d578fd1..47967c64 100644
  {
      using Fetch::Infrastructure::Request;
 diff --git a/Libraries/LibWeb/Loader/ContentBlocker.h b/Libraries/LibWeb/Loader/ContentBlocker.h
-index 02df6f07..e2a2d2f3 100644
+index 02df6f071..e2a2d2f35 100644
 --- a/Libraries/LibWeb/Loader/ContentBlocker.h
 +++ b/Libraries/LibWeb/Loader/ContentBlocker.h
 @@ -68,6 +68,8 @@ public:
@@ -167,10 +167,10 @@ index 02df6f07..e2a2d2f3 100644
      static ResourceType resource_type_from_fetch_metadata(Optional<Fetch::Infrastructure::Request::Destination> const&, Optional<Fetch::Infrastructure::Request::InitiatorType> const&, Fetch::Infrastructure::Request::Mode);
      static URL::URL source_url_for_matching(URL::URL const&);
 diff --git a/Libraries/LibWebView/Application.cpp b/Libraries/LibWebView/Application.cpp
-index dec5ef24..51e80eef 100644
+index 0d3dff56d..4f35272a9 100644
 --- a/Libraries/LibWebView/Application.cpp
 +++ b/Libraries/LibWebView/Application.cpp
-@@ -976,7 +976,8 @@ ErrorOr<bool> Application::load_content_blocker_lists()
+@@ -973,7 +973,8 @@ ErrorOr<bool> Application::load_content_blocker_lists()
          custom_filters,
          SuperbirdContentBlocking::trust_custom_filters_enabled(*m_settings),
          resources_json.bytes(),

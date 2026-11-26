@@ -6,10 +6,10 @@ Subject: [PATCH] UI+Settings: show uBO-compatible engine status and per-site
 
 
 diff --git a/Base/res/ladybird/about-pages/settings.html b/Base/res/ladybird/about-pages/settings.html
-index 3c1cbf88..96d42fe3 100644
+index 90a80a0a8..deea9949f 100644
 --- a/Base/res/ladybird/about-pages/settings.html
 +++ b/Base/res/ladybird/about-pages/settings.html
-@@ -1428,6 +1428,12 @@
+@@ -1441,6 +1441,12 @@
                          <label for="enable-content-blocking">Block ads, trackers and more</label>
                          <input id="enable-content-blocking" type="checkbox" switch />
                      </div>
@@ -23,7 +23,7 @@ index 3c1cbf88..96d42fe3 100644
                          <div class="filter-list-row control-row">
                              <input type="checkbox" />
 diff --git a/Base/res/ladybird/about-pages/settings/blocking.js b/Base/res/ladybird/about-pages/settings/blocking.js
-index ae5f8682..96e7174d 100644
+index ae5f86827..96e7174d6 100644
 --- a/Base/res/ladybird/about-pages/settings/blocking.js
 +++ b/Base/res/ladybird/about-pages/settings/blocking.js
 @@ -15,6 +15,8 @@ const customFilters = document.querySelector("#custom-content-blocker-filters");
@@ -66,7 +66,7 @@ index ae5f8682..96e7174d 100644
      subscriptionUrl.value = ensureURLHasScheme(subscriptionUrl.value);
      if (!subscriptionUrl.reportValidity() || subscriptionUrl.value.length === 0) {
 diff --git a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
-index 71a34f32..68cfbcdf 100644
+index 71a34f329..68cfbcdf1 100644
 --- a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
 +++ b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
 @@ -38,6 +38,7 @@ pub struct ContentBlockerEngine {
@@ -106,10 +106,10 @@ index 71a34f32..68cfbcdf 100644
          Box::into_raw(Box::new(engine))
      })
 diff --git a/Libraries/LibWebView/Application.cpp b/Libraries/LibWebView/Application.cpp
-index 4de681f6..dec5ef24 100644
+index b85fc8501..0d3dff56d 100644
 --- a/Libraries/LibWebView/Application.cpp
 +++ b/Libraries/LibWebView/Application.cpp
-@@ -969,12 +969,14 @@ ErrorOr<bool> Application::load_content_blocker_lists()
+@@ -966,12 +966,14 @@ ErrorOr<bool> Application::load_content_blocker_lists()
          }
      }
  
@@ -126,7 +126,7 @@ index 4de681f6..dec5ef24 100644
      if (bundle.is_empty()) {
          if (m_content_blocker_list_buffer.has_value() && m_content_blocker_list_buffer->size() == 0)
 diff --git a/UI/Qt/SiteSettingsPopover.cpp b/UI/Qt/SiteSettingsPopover.cpp
-index 1d83427e..021cbe03 100644
+index 1d83427e8..021cbe036 100644
 --- a/UI/Qt/SiteSettingsPopover.cpp
 +++ b/UI/Qt/SiteSettingsPopover.cpp
 @@ -4,6 +4,7 @@
@@ -221,7 +221,7 @@ index 1d83427e..021cbe03 100644
      // What was blocked is only listed while content blocking is on.
      auto count = qformatted("{}", blocking.blocked_resources.size());
 diff --git a/UI/Qt/SiteSettingsPopover.h b/UI/Qt/SiteSettingsPopover.h
-index 4b511f1c..16580cb4 100644
+index 4b511f1cb..16580cb4a 100644
 --- a/UI/Qt/SiteSettingsPopover.h
 +++ b/UI/Qt/SiteSettingsPopover.h
 @@ -60,8 +60,10 @@ public:

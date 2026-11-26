@@ -6,7 +6,7 @@ Subject: [PATCH] LibWeb: support uBO-compatible redirects, removeparam, CSP
 
 
 diff --git a/Libraries/LibWeb/ContentBlocker/Rust/cbindgen.toml b/Libraries/LibWeb/ContentBlocker/Rust/cbindgen.toml
-index cec7fa6c..3eab2f45 100644
+index cec7fa6ca..3eab2f454 100644
 --- a/Libraries/LibWeb/ContentBlocker/Rust/cbindgen.toml
 +++ b/Libraries/LibWeb/ContentBlocker/Rust/cbindgen.toml
 @@ -21,7 +21,7 @@ parse_deps = false
@@ -19,7 +19,7 @@ index cec7fa6c..3eab2f45 100644
  exclude = ["ContentBlockerEngine"]
  
 diff --git a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
-index 5e0a3187..91bde90b 100644
+index 5e0a3187d..91bde90b0 100644
 --- a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
 +++ b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
 @@ -25,6 +25,14 @@ pub struct ContentBlockerString {
@@ -112,10 +112,10 @@ index 5e0a3187..91bde90b 100644
  /// - `engine` must be null or a valid pointer returned by `rust_content_blocker_create`
  #[unsafe(no_mangle)]
 diff --git a/Libraries/LibWeb/Fetch/Fetching/Fetching.cpp b/Libraries/LibWeb/Fetch/Fetching/Fetching.cpp
-index 619973f2..ee408b20 100644
+index f5cb4994a..51faa089d 100644
 --- a/Libraries/LibWeb/Fetch/Fetching/Fetching.cpp
 +++ b/Libraries/LibWeb/Fetch/Fetching/Fetching.cpp
-@@ -22,6 +22,7 @@
+@@ -24,6 +24,7 @@
  #include <LibRequests/Request.h>
  #include <LibRequests/RequestTimingInfo.h>
  #include <LibTextCodec/Encoder.h>
@@ -123,7 +123,7 @@ index 619973f2..ee408b20 100644
  #include <LibWeb/Bindings/PrincipalHostDefined.h>
  #include <LibWeb/ContentSecurityPolicy/BlockingAlgorithms.h>
  #include <LibWeb/DOM/Document.h>
-@@ -58,6 +59,7 @@
+@@ -62,6 +63,7 @@
  #include <LibWeb/Fetch/Infrastructure/Task.h>
  #include <LibWeb/FileAPI/Blob.h>
  #include <LibWeb/FileAPI/BlobURLStore.h>
@@ -131,7 +131,7 @@ index 619973f2..ee408b20 100644
  #include <LibWeb/HTML/EventLoop/EventLoop.h>
  #include <LibWeb/HTML/LocalNavigable.h>
  #include <LibWeb/HTML/PreloadEntry.h>
-@@ -707,6 +709,39 @@ GC::Ptr<PendingResponse> main_fetch(JS::Realm& realm, Infrastructure::FetchParam
+@@ -719,6 +721,39 @@ GC::Ptr<PendingResponse> main_fetch(JS::Realm& realm, Infrastructure::FetchParam
      // 10. Set request’s current URL’s scheme to "https" if all of the following conditions are true:
      upgrade_request_to_https_for_known_hsts_host_if_appropriate(Bindings::principal_host_defined_page(realm), *request);
  
@@ -171,7 +171,7 @@ index 619973f2..ee408b20 100644
      auto get_response = GC::create_function<GC::Ref<PendingResponse>()>(GC::Heap::the(), GC::captures(realm, NonnullRefPtr { fetch_params }, fetch_params.controller(), request), [](auto& realm, NonnullRefPtr<Infrastructure::FetchParams const>& fetch_params, GC::Ref<Infrastructure::FetchController>& controller, NonnullRefPtr<Infrastructure::Request>& request) -> GC::Ref<PendingResponse> {
          dbgln_if(WEB_FETCH_DEBUG, "Fetch: Running 'main fetch' get_response() function");
          auto const* origin = request->origin().get_pointer<URL::Origin>();
-@@ -2950,6 +2985,46 @@ GC::Ref<PendingResponse> nonstandard_resource_loader_file_or_http_network_fetch(
+@@ -3082,6 +3117,46 @@ GC::Ref<PendingResponse> nonstandard_resource_loader_file_or_http_network_fetch(
  
      auto pending_response = PendingResponse::create(fetch_params);
  
@@ -219,7 +219,7 @@ index 619973f2..ee408b20 100644
          dbgln("Fetch: Invoking ResourceLoader");
          log_load_request(load_request);
 diff --git a/Libraries/LibWeb/HTML/LocalNavigable.cpp b/Libraries/LibWeb/HTML/LocalNavigable.cpp
-index f32af85d..ba87840f 100644
+index 09437288e..d75c8ae01 100644
 --- a/Libraries/LibWeb/HTML/LocalNavigable.cpp
 +++ b/Libraries/LibWeb/HTML/LocalNavigable.cpp
 @@ -26,8 +26,10 @@
@@ -233,7 +233,7 @@ index f32af85d..ba87840f 100644
  #include <LibWeb/DOM/Document.h>
  #include <LibWeb/DOM/DocumentFragment.h>
  #include <LibWeb/DOM/DocumentLoading.h>
-@@ -2456,6 +2458,43 @@ static void perform_navigation_params_fetch(JS::Realm& realm, GC::Ref<Navigation
+@@ -2489,6 +2491,43 @@ static void perform_navigation_params_fetch(JS::Realm& realm, GC::Ref<Navigation
          // 9. Set responsePolicyContainer to the result of creating a policy container from a fetch response given response and request's reserved client.
          state_holder->response_policy_container = create_a_policy_container_from_a_fetch_response(*state_holder->response, state_holder->reserved_client);
  
@@ -278,7 +278,7 @@ index f32af85d..ba87840f 100644
          state_holder->final_sandbox_flags = state_holder->target_snapshot_params.sandboxing_flags | state_holder->response_policy_container->csp_list.csp_derived_sandboxing_flags();
  
 diff --git a/Libraries/LibWeb/Loader/ContentBlocker.cpp b/Libraries/LibWeb/Loader/ContentBlocker.cpp
-index 58716b45..4d578fd1 100644
+index 58716b45b..4d578fd17 100644
 --- a/Libraries/LibWeb/Loader/ContentBlocker.cpp
 +++ b/Libraries/LibWeb/Loader/ContentBlocker.cpp
 @@ -69,6 +69,21 @@ static ByteString serialized_url_for_matching(URL::URL const& url)
@@ -372,7 +372,7 @@ index 58716b45..4d578fd1 100644
  {
      return cosmetic_style_sheet_for_url(url, {}, {});
 diff --git a/Libraries/LibWeb/Loader/ContentBlocker.h b/Libraries/LibWeb/Loader/ContentBlocker.h
-index b8c299d0..02df6f07 100644
+index b8c299d0c..02df6f071 100644
 --- a/Libraries/LibWeb/Loader/ContentBlocker.h
 +++ b/Libraries/LibWeb/Loader/ContentBlocker.h
 @@ -47,9 +47,19 @@ public:
@@ -396,7 +396,7 @@ index b8c299d0..02df6f07 100644
      ErrorOr<void> set_rules_from_bytes(ReadonlyBytes);
  
 diff --git a/Libraries/LibWeb/WebSockets/WebSocket.cpp b/Libraries/LibWeb/WebSockets/WebSocket.cpp
-index fe263fa8..063a7d25 100644
+index fe263fa85..063a7d25c 100644
 --- a/Libraries/LibWeb/WebSockets/WebSocket.cpp
 +++ b/Libraries/LibWeb/WebSockets/WebSocket.cpp
 @@ -37,6 +37,7 @@

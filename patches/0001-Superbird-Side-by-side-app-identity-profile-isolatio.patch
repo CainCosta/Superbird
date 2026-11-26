@@ -6,7 +6,7 @@ Subject: [PATCH] Superbird: Side-by-side app identity, profile isolation, and
 
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index ff886075..1018d689 100644
+index ff886075f..1018d6892 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -41,6 +41,7 @@ set(LADYBIRD_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -18,7 +18,7 @@ index ff886075..1018d689 100644
  include(check_for_dependencies)
  include(ladybird_helper_processes)
 diff --git a/Libraries/LibCore/CMakeLists.txt b/Libraries/LibCore/CMakeLists.txt
-index c10e5199..33aec48e 100644
+index c10e51995..33aec48ea 100644
 --- a/Libraries/LibCore/CMakeLists.txt
 +++ b/Libraries/LibCore/CMakeLists.txt
 @@ -133,7 +133,7 @@ if (NOT LADYBIRD_VERSION STREQUAL "")
@@ -31,7 +31,7 @@ index c10e5199..33aec48e 100644
  if (ENABLE_INSTALL_HEADERS)
      install(FILES "${CMAKE_CURRENT_BINARY_DIR}/BrowserVersion.h" COMPONENT Lagom_Development
 diff --git a/Libraries/LibDevTools/FirefoxClient.cpp b/Libraries/LibDevTools/FirefoxClient.cpp
-index d84b9989..4b71de86 100644
+index d84b99899..4b71de866 100644
 --- a/Libraries/LibDevTools/FirefoxClient.cpp
 +++ b/Libraries/LibDevTools/FirefoxClient.cpp
 @@ -60,7 +60,7 @@ static constexpr auto USER_CHROME_CSS = R"~~~(
@@ -44,7 +44,7 @@ index d84b9989..4b71de86 100644
  }
  
 diff --git a/Libraries/LibWebView/Application.cpp b/Libraries/LibWebView/Application.cpp
-index 88290113..72ac501a 100644
+index 7cb52f2c9..61b4753e4 100644
 --- a/Libraries/LibWebView/Application.cpp
 +++ b/Libraries/LibWebView/Application.cpp
 @@ -813,7 +813,7 @@ ErrorOr<void> Application::create_profile([[maybe_unused]] Optional<StringView>
@@ -56,7 +56,7 @@ index 88290113..72ac501a 100644
  
  #if defined(AK_OS_ANDROID)
      m_profile = TRY(Profile::create_legacy(profile_roots));
-@@ -835,7 +835,7 @@ ErrorOr<void> Application::create_profile([[maybe_unused]] Optional<StringView>
+@@ -827,7 +827,7 @@ ErrorOr<void> Application::create_profile([[maybe_unused]] Optional<StringView>
  void Application::create_mach_port_server([[maybe_unused]] ByteString const& profile_identity)
  {
  #if defined(AK_OS_MACOS)
@@ -66,7 +66,7 @@ index 88290113..72ac501a 100644
      set_mach_server_name(m_mach_port_server->server_port_name());
  
 diff --git a/Libraries/LibWebView/BrowserProcess.cpp b/Libraries/LibWebView/BrowserProcess.cpp
-index 9b371a01..4834ebc7 100644
+index 36fc8ca0b..837447ee4 100644
 --- a/Libraries/LibWebView/BrowserProcess.cpp
 +++ b/Libraries/LibWebView/BrowserProcess.cpp
 @@ -231,7 +231,7 @@ static Optional<pid_t> read_pid_file(StringView pid_path)
@@ -88,7 +88,7 @@ index 9b371a01..4834ebc7 100644
      if (server_port.is_error())
          return HandoverResult { Handover::BrowserIsGone };
 diff --git a/Libraries/LibWebView/CrashReportStore.cpp b/Libraries/LibWebView/CrashReportStore.cpp
-index 99c06bbb..21edeeb0 100644
+index 99c06bbb3..21edeeb0f 100644
 --- a/Libraries/LibWebView/CrashReportStore.cpp
 +++ b/Libraries/LibWebView/CrashReportStore.cpp
 @@ -38,7 +38,7 @@ using namespace Core::CrashReportData;
@@ -101,7 +101,7 @@ index 99c06bbb..21edeeb0 100644
  
  // The browser's own store. It moves into the profile once the profile is known.
 diff --git a/Libraries/LibWebView/NotificationBackendMacOS.mm b/Libraries/LibWebView/NotificationBackendMacOS.mm
-index f31e66bc..555c41ca 100644
+index f31e66bcb..555c41caf 100644
 --- a/Libraries/LibWebView/NotificationBackendMacOS.mm
 +++ b/Libraries/LibWebView/NotificationBackendMacOS.mm
 @@ -60,7 +60,7 @@ static void on_main_thread(Function<void()> function)
@@ -123,7 +123,7 @@ index f31e66bc..555c41ca 100644
              content.sound = [UNNotificationSound defaultSound];
  
 diff --git a/Libraries/LibWebView/NotificationFreedesktopArguments.cpp b/Libraries/LibWebView/NotificationFreedesktopArguments.cpp
-index fb77885c..517a4682 100644
+index fb77885c0..517a4682b 100644
 --- a/Libraries/LibWebView/NotificationFreedesktopArguments.cpp
 +++ b/Libraries/LibWebView/NotificationFreedesktopArguments.cpp
 @@ -69,9 +69,9 @@ static FreedesktopImageData image_data_for(Gfx::Bitmap const& bitmap)
@@ -148,7 +148,7 @@ index fb77885c..517a4682 100644
          arguments.hints.append({ "image-data"_string, image_data_for(*notification.icon) });
  
 diff --git a/Libraries/LibWebView/Profile.cpp b/Libraries/LibWebView/Profile.cpp
-index 918ec037..9e411b2a 100644
+index 918ec037d..9e411b2ae 100644
 --- a/Libraries/LibWebView/Profile.cpp
 +++ b/Libraries/LibWebView/Profile.cpp
 @@ -17,7 +17,7 @@ namespace WebView {
@@ -186,10 +186,22 @@ index 918ec037..9e411b2a 100644
  
      TRY(create_profile_directories(paths));
 diff --git a/Meta/CMake/cmake_options.cmake b/Meta/CMake/cmake_options.cmake
-index 7032bfc7..9ac240f9 100644
+index 6fce69f0a..e3b4c385b 100644
 --- a/Meta/CMake/cmake_options.cmake
 +++ b/Meta/CMake/cmake_options.cmake
-@@ -63,7 +63,7 @@ endif()
+@@ -54,17 +54,17 @@ set(LADYBIRD_VERSION "" CACHE STRING "Version of a release, such as 2026.46.0")
+ set(LADYBIRD_BROWSER_VERSION "${PROJECT_VERSION}")
+ 
+ # Development builds have a bundle identifier of their own, so that macOS does not take them for copies of the release.
+-set(LADYBIRD_BUNDLE_IDENTIFIER "org.ladybird.Ladybird.Development")
++set(LADYBIRD_BUNDLE_IDENTIFIER "org.superbird.Superbird")
+ if (NOT LADYBIRD_VERSION STREQUAL "")
+     set(LADYBIRD_BROWSER_VERSION "${LADYBIRD_VERSION}")
+-    set(LADYBIRD_BUNDLE_IDENTIFIER "org.ladybird.Ladybird")
++    set(LADYBIRD_BUNDLE_IDENTIFIER "org.superbird.Superbird")
+ endif()
+ 
+ # The stage of development that releases are in, if any, such as Alpha or Beta.
  set(LADYBIRD_RELEASE_STAGE "Alpha")
  
  # Like other browsers, our Linux packages keep Ladybird in a directory of its own.
@@ -199,7 +211,7 @@ index 7032bfc7..9ac240f9 100644
  option(ENABLE_ADDRESS_SANITIZER "Enable address sanitizer testing in gcc/clang" OFF)
  option(ENABLE_MEMORY_SANITIZER "Enable memory sanitizer testing in gcc/clang" OFF)
 diff --git a/Services/WebDriver/main.cpp b/Services/WebDriver/main.cpp
-index d19798a1..a2139f81 100644
+index d19798a12..a2139f81e 100644
 --- a/Services/WebDriver/main.cpp
 +++ b/Services/WebDriver/main.cpp
 @@ -207,7 +207,7 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
@@ -212,9 +224,18 @@ index d19798a1..a2139f81 100644
  
          auto maybe_client = WebDriver::Client::try_create(maybe_buffered_socket.release_value(), move(launch_browser_callback));
 diff --git a/Tests/LibWebView/TestNotificationFreedesktopArguments.cpp b/Tests/LibWebView/TestNotificationFreedesktopArguments.cpp
-index 70e7e156..43932351 100644
+index 70e7e1568..9effb9cfc 100644
 --- a/Tests/LibWebView/TestNotificationFreedesktopArguments.cpp
 +++ b/Tests/LibWebView/TestNotificationFreedesktopArguments.cpp
+@@ -31,7 +31,7 @@ static Optional<FreedesktopHint> hint(FreedesktopNotifyArguments const& argument
+ TEST_CASE(summary_is_the_title_and_body_opens_with_the_attribution)
+ {
+     auto arguments = build_notify_arguments(notification("New mail"_utf16, "From Alice"_utf16), { .body = true }, 0);
+-    EXPECT_EQ(arguments.app_name, "Ladybird"_string);
++    EXPECT_EQ(arguments.app_name, "Superbird"_string);
+     EXPECT_EQ(arguments.summary, "New mail"_string);
+     EXPECT_EQ(arguments.body, "example.com\n\nFrom Alice"_string);
+     EXPECT_EQ(arguments.replaces_id, 0u);
 @@ -137,7 +137,7 @@ TEST_CASE(desktop_entry_names_the_application)
  {
      auto entry = hint(build_notify_arguments(notification("t"_utf16, "b"_utf16), {}, 0), "desktop-entry"sv);
@@ -224,8 +245,57 @@ index 70e7e156..43932351 100644
  }
  
  TEST_CASE(default_action_only_when_the_daemon_takes_actions)
+diff --git a/Tests/LibWebView/TestProcessReaper.cpp b/Tests/LibWebView/TestProcessReaper.cpp
+index 5be2e09d6..eb90cd015 100644
+--- a/Tests/LibWebView/TestProcessReaper.cpp
++++ b/Tests/LibWebView/TestProcessReaper.cpp
+@@ -16,7 +16,7 @@ static ByteString process_reaper_path()
+ {
+     // The helpers live in the application bundle next to the test executables.
+     auto test_directory = LexicalPath::dirname(MUST(Core::System::current_executable_path()));
+-    return ByteString::formatted("{}/Ladybird.app/Contents/MacOS/ProcessReaper", test_directory);
++    return ByteString::formatted("{}/Superbird.app/Contents/MacOS/ProcessReaper", test_directory);
+ }
+ 
+ TEST_CASE(helpers_are_killed_once_the_browser_is_gone)
+diff --git a/Tests/LibWebView/TestProfile.cpp b/Tests/LibWebView/TestProfile.cpp
+index 574c4bb85..f2c50afb5 100644
+--- a/Tests/LibWebView/TestProfile.cpp
++++ b/Tests/LibWebView/TestProfile.cpp
+@@ -81,13 +81,13 @@ TEST_CASE(named_and_default_layouts)
+ 
+     auto named = MUST(WebView::Profile::create({ .name = "work" }, profile_roots));
+     EXPECT_EQ(named.identifier(), "work"sv);
+-    EXPECT_EQ(named.paths().config, LexicalPath::join(profile_roots.config, "Ladybird/Profiles/work"sv).string());
+-    EXPECT_EQ(named.paths().data, LexicalPath::join(profile_roots.data, "Ladybird/Profiles/work"sv).string());
+-    EXPECT_EQ(named.paths().cache, LexicalPath::join(profile_roots.cache, "Ladybird/Profiles/work"sv).string());
+-    EXPECT_EQ(named.paths().runtime, LexicalPath::join(profile_roots.runtime, "Ladybird/Profiles/work"sv).string());
++    EXPECT_EQ(named.paths().config, LexicalPath::join(profile_roots.config, "Superbird/Profiles/work"sv).string());
++    EXPECT_EQ(named.paths().data, LexicalPath::join(profile_roots.data, "Superbird/Profiles/work"sv).string());
++    EXPECT_EQ(named.paths().cache, LexicalPath::join(profile_roots.cache, "Superbird/Profiles/work"sv).string());
++    EXPECT_EQ(named.paths().runtime, LexicalPath::join(profile_roots.runtime, "Superbird/Profiles/work"sv).string());
+ 
+     auto default_profile = MUST(WebView::Profile::create({}, profile_roots));
+-    auto default_profile_path = LexicalPath::join("Ladybird/Profiles"sv, WebView::DEFAULT_PROFILE_NAME).string();
++    auto default_profile_path = LexicalPath::join("Superbird/Profiles"sv, WebView::DEFAULT_PROFILE_NAME).string();
+     EXPECT_EQ(default_profile.identifier(), WebView::DEFAULT_PROFILE_NAME);
+     EXPECT_EQ(default_profile.paths().config, LexicalPath::join(profile_roots.config, default_profile_path).string());
+     EXPECT_EQ(default_profile.paths().data, LexicalPath::join(profile_roots.data, default_profile_path).string());
+@@ -124,9 +124,9 @@ TEST_CASE(legacy_layout)
+     auto profile_roots = roots();
+     auto profile = MUST(WebView::Profile::create_legacy(profile_roots));
+     EXPECT_EQ(profile.identifier(), "legacy"sv);
+-    EXPECT_EQ(profile.paths().config, LexicalPath::join(profile_roots.config, "Ladybird"sv).string());
+-    EXPECT_EQ(profile.paths().data, LexicalPath::join(profile_roots.data, "Ladybird"sv).string());
+-    EXPECT_EQ(profile.paths().cache, LexicalPath::join(profile_roots.cache, "Ladybird"sv).string());
++    EXPECT_EQ(profile.paths().config, LexicalPath::join(profile_roots.config, "Superbird"sv).string());
++    EXPECT_EQ(profile.paths().data, LexicalPath::join(profile_roots.data, "Superbird"sv).string());
++    EXPECT_EQ(profile.paths().cache, LexicalPath::join(profile_roots.cache, "Superbird"sv).string());
+     EXPECT_EQ(profile.paths().runtime, profile_roots.runtime);
+     remove_test_root();
+ }
 diff --git a/UI/CMakeLists.txt b/UI/CMakeLists.txt
-index 7ef5450a..08b00725 100644
+index a209301e3..08b00725c 100644
 --- a/UI/CMakeLists.txt
 +++ b/UI/CMakeLists.txt
 @@ -45,14 +45,14 @@ endif()
@@ -233,7 +303,7 @@ index 7ef5450a..08b00725 100644
  function(create_ladybird_bundle target_name)
      set_target_properties(${target_name} PROPERTIES
 -        OUTPUT_NAME "Ladybird"
--        MACOSX_BUNDLE_GUI_IDENTIFIER org.ladybird.Ladybird
+-        MACOSX_BUNDLE_GUI_IDENTIFIER ${LADYBIRD_BUNDLE_IDENTIFIER}
 +        OUTPUT_NAME "Superbird"
 +        MACOSX_BUNDLE_GUI_IDENTIFIER org.superbird.Superbird
          MACOSX_BUNDLE_BUNDLE_VERSION ${LADYBIRD_BROWSER_VERSION}
@@ -241,16 +311,16 @@ index 7ef5450a..08b00725 100644
          MACOSX_BUNDLE_INFO_PLIST "${LADYBIRD_SOURCE_DIR}/UI/Info.plist"
          MACOSX_BUNDLE TRUE
          WIN32_EXECUTABLE TRUE
--        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER org.ladybird.Ladybird
+-        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${LADYBIRD_BUNDLE_IDENTIFIER}
 +        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER org.superbird.Superbird
      )
  
      if (APPLE)
 diff --git a/UI/Info.plist b/UI/Info.plist
-index adae3f83..b1919e6e 100644
+index b9ee7783f..6c9c0ab34 100644
 --- a/UI/Info.plist
 +++ b/UI/Info.plist
-@@ -11,17 +11,17 @@
+@@ -11,15 +11,15 @@
          <key>CFBundlePackageType</key>
          <string>APPL</string>
          <key>CFBundleGetInfoString</key>
@@ -268,16 +338,13 @@ index adae3f83..b1919e6e 100644
 -        <string>Ladybird</string>
 +        <string>Superbird</string>
          <key>CFBundleIdentifier</key>
--        <string>org.ladybird.Ladybird</string>
-+        <string>org.superbird.Superbird</string>
+         <string>${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>
          <key>CFBundleShortVersionString</key>
-         <string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
-         <key>CFBundleVersion</key>
 diff --git a/UI/Qt/Application.cpp b/UI/Qt/Application.cpp
-index 5207cd38..2d5b764d 100644
+index 7d0d24d79..6e9e51d3b 100644
 --- a/UI/Qt/Application.cpp
 +++ b/UI/Qt/Application.cpp
-@@ -861,7 +861,7 @@ ErrorOr<void> Application::connect_to_hub(Main::Arguments const& arguments)
+@@ -873,7 +873,7 @@ ErrorOr<void> Application::connect_to_hub(Main::Arguments const& arguments)
      // NB: This must answer while the main thread waits for the Hub to initialize, so it answers on its own thread.
      //     Every round uses the same server, as its name cannot be registered again right after it was let go of.
      auto hub_bootstrap = adopt_ref(*new HubBootstrap);
@@ -286,7 +353,7 @@ index 5207cd38..2d5b764d 100644
      if (!bootstrap_listener.is_initialized())
          return Error::from_string_literal("Unable to start the Mach server for the Hub");
      bootstrap_listener.on_bootstrap_request = [hub_bootstrap](IPC::MachBootstrapListener::BootstrapRequest request) {
-@@ -1360,7 +1360,7 @@ void Application::will_create_event_loop(Main::Arguments& arguments)
+@@ -1372,7 +1372,7 @@ void Application::will_create_event_loop(Main::Arguments& arguments)
      new PNGMimeConverter;
  #endif
  #if defined(AK_OS_LINUX)
@@ -296,7 +363,7 @@ index 5207cd38..2d5b764d 100644
  #endif
  #if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
 diff --git a/UI/Qt/ExternalURLHandler.cpp b/UI/Qt/ExternalURLHandler.cpp
-index 4cf78aa1..50557f54 100644
+index 4cf78aa18..50557f54a 100644
 --- a/UI/Qt/ExternalURLHandler.cpp
 +++ b/UI/Qt/ExternalURLHandler.cpp
 @@ -21,7 +21,7 @@
@@ -309,20 +376,20 @@ index 4cf78aa1..50557f54 100644
  
  struct LadybirdAppLaunchContext {
 diff --git a/UI/Qt/ExternalURLHandler.mm b/UI/Qt/ExternalURLHandler.mm
-index ec993c58..7f6663fe 100644
+index 581c46ca7..6bf2b24b5 100644
 --- a/UI/Qt/ExternalURLHandler.mm
 +++ b/UI/Qt/ExternalURLHandler.mm
-@@ -84,7 +84,7 @@ void resolve_external_url_handler(URL::URL const& url, WebView::ExternalURLHandl
- 
+@@ -86,7 +86,7 @@ void resolve_external_url_handler(URL::URL const& url, WebView::ExternalURLHandl
      bool is_ladybird = false;
      if (auto* bundle_identifier = [[NSBundle bundleWithURL:application_url] bundleIdentifier]; bundle_identifier != nil) {
--        is_ladybird = [bundle_identifier caseInsensitiveCompare:@"org.ladybird.Ladybird"] == NSOrderedSame;
-+        is_ladybird = [bundle_identifier caseInsensitiveCompare:@"org.superbird.Superbird"] == NSOrderedSame;
+         auto* own_identifier = [[NSBundle mainBundle] bundleIdentifier];
+-        is_ladybird = [bundle_identifier caseInsensitiveCompare:@"org.ladybird.Ladybird"] == NSOrderedSame
++        is_ladybird = [bundle_identifier caseInsensitiveCompare:@"org.superbird.Superbird"] == NSOrderedSame
+             || (own_identifier != nil && [bundle_identifier caseInsensitiveCompare:own_identifier] == NSOrderedSame);
      }
  
-     if (!is_ladybird) {
 diff --git a/UI/cmake/InstallRules.cmake b/UI/cmake/InstallRules.cmake
-index a8b2bc48..2a8c18e7 100644
+index 36b16c965..37d5149d1 100644
 --- a/UI/cmake/InstallRules.cmake
 +++ b/UI/cmake/InstallRules.cmake
 @@ -5,7 +5,7 @@ include(GNUInstallDirs)
@@ -356,7 +423,7 @@ index a8b2bc48..2a8c18e7 100644
          set(qt_conf_plugins PlugIns)
  
          get_target_property(qt_core_type Qt6::Core TYPE)
-@@ -320,7 +320,7 @@ if (ENABLE_INSTALL_FREEDESKTOP_FILES OR LINUX)
+@@ -329,7 +329,7 @@ if (ENABLE_INSTALL_FREEDESKTOP_FILES OR LINUX)
          set(METAINFO_RELEASE_TYPE "development")
          set(METAINFO_RELEASE_DESCRIPTION "${LADYBIRD_RELEASE_STAGE} release.")
      endif()
@@ -365,7 +432,7 @@ index a8b2bc48..2a8c18e7 100644
  endif()
  
  # The archives and Linux packages leave these out: an archive can be unpacked anywhere, and the Linux packages carry
-@@ -329,20 +329,21 @@ if (ENABLE_INSTALL_FREEDESKTOP_FILES)
+@@ -338,20 +338,21 @@ if (ENABLE_INSTALL_FREEDESKTOP_FILES)
      install(FILES
          "${FREEDESKTOP_RESOURCE_DIR}/org.ladybird.Ladybird.svg"
          DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
@@ -390,7 +457,7 @@ index a8b2bc48..2a8c18e7 100644
          DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo"
          COMPONENT ladybird_Freedesktop
      )
-@@ -352,36 +353,37 @@ endif()
+@@ -361,36 +362,37 @@ endif()
  # and the debug symbols to the rest of the system.
  if (LINUX)
      set(system_integration_dir "${CMAKE_CURRENT_BINARY_DIR}/system_integration")

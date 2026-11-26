@@ -6,10 +6,10 @@ Subject: [PATCH] UI/Qt: Let the tab bar hide tabs, host a sidebar footer, and
 
 
 diff --git a/UI/Qt/Application.cpp b/UI/Qt/Application.cpp
-index c0c88abc..87d46e5e 100644
+index e2d23a295..2c54933cc 100644
 --- a/UI/Qt/Application.cpp
 +++ b/UI/Qt/Application.cpp
-@@ -1562,6 +1562,8 @@ void Application::create_session_store(ByteString const& data_directory, bool pe
+@@ -1590,6 +1590,8 @@ void Application::create_session_store(ByteString const& data_directory, bool pe
          on_recently_closed_entries_changed();
      };
  
@@ -19,10 +19,10 @@ index c0c88abc..87d46e5e 100644
      if (persists_sessions) {
          if (auto tree_store = TreeTabStore::create(data_directory); !tree_store.is_error()) {
 diff --git a/UI/Qt/BrowserWindow.cpp b/UI/Qt/BrowserWindow.cpp
-index f45b31bd..dd3d8f2d 100644
+index 3b3314f73..a3bfaa779 100644
 --- a/UI/Qt/BrowserWindow.cpp
 +++ b/UI/Qt/BrowserWindow.cpp
-@@ -1704,9 +1704,13 @@ void BrowserWindow::open_next_tab()
+@@ -1693,9 +1693,13 @@ void BrowserWindow::open_next_tab()
      if (m_tabs_container->count() <= 1)
          return;
  
@@ -39,7 +39,7 @@ index f45b31bd..dd3d8f2d 100644
      m_tabs_container->set_current_index(next_index);
  }
  
-@@ -1715,9 +1719,12 @@ void BrowserWindow::open_previous_tab()
+@@ -1704,9 +1708,12 @@ void BrowserWindow::open_previous_tab()
      if (m_tabs_container->count() <= 1)
          return;
  
@@ -56,10 +56,10 @@ index f45b31bd..dd3d8f2d 100644
  }
  
 diff --git a/UI/Qt/TabBar.cpp b/UI/Qt/TabBar.cpp
-index 468e3dd4..fcaa28d4 100644
+index c1bfeac07..d8f017f97 100644
 --- a/UI/Qt/TabBar.cpp
 +++ b/UI/Qt/TabBar.cpp
-@@ -955,6 +955,26 @@ int TabBar::pinned_tab_count() const
+@@ -965,6 +965,26 @@ int TabBar::pinned_tab_count() const
      return pinned_count;
  }
  
@@ -86,7 +86,7 @@ index 468e3dd4..fcaa28d4 100644
  void TabBar::recreate_icons()
  {
      m_fallback_tab_icon = create_chrome_icon(ChromeIcon::Globe, Theme::chrome_palette(*this));
-@@ -989,7 +1009,7 @@ QSize TabBar::tabSizeHint(int index) const
+@@ -999,7 +1019,7 @@ QSize TabBar::tabSizeHint(int index) const
      if (auto count = this->count(); count > 0) {
          auto pinned_count = pinned_tab_count();
          // The first and last tabs also take room for their feet at the ends of the tab bar.
@@ -95,13 +95,13 @@ index 468e3dd4..fcaa28d4 100644
          if (index < pinned_count) {
              hint.setWidth(HORIZONTAL_PINNED_TAB_WIDTH + end_room);
              hint.setHeight(HORIZONTAL_TAB_HEIGHT);
-@@ -1023,12 +1043,14 @@ int TabBar::horizontal_tab_share() const
+@@ -1035,12 +1055,14 @@ int TabBar::horizontal_tab_share() const
  {
      auto pinned_count = pinned_tab_count();
      auto remaining_width = (m_available_width > 0 ? m_available_width : this->width()) - (pinned_count * HORIZONTAL_PINNED_TAB_WIDTH) - (2 * HORIZONTAL_TAB_END_ROOM);
 -    auto sharing_count = count() - pinned_count;
 +    auto sharing_count = count() - pinned_count - hidden_tab_count(pinned_count);
-     if (sharing_count <= 0)
+     if (sharing_count <= 0 || remaining_width / sharing_count <= HORIZONTAL_TAB_MIN_WIDTH)
          return HORIZONTAL_TAB_MIN_WIDTH;
  
      Vector<int, 8> larger_min_widths;
@@ -111,7 +111,7 @@ index 468e3dd4..fcaa28d4 100644
          if (auto min_width = horizontal_tab_min_width(index); min_width > HORIZONTAL_TAB_MIN_WIDTH)
              larger_min_widths.append(min_width);
      }
-@@ -1787,7 +1809,7 @@ QRect TabBar::incoming_drop_layout_rect(int position) const
+@@ -1788,7 +1810,7 @@ QRect TabBar::incoming_drop_layout_rect(int position) const
      if (tab_layout() != TabLayout::Horizontal)
          return vertical_tab_rect(position, pinned_region_for(pinned_count));
  
@@ -120,7 +120,7 @@ index 468e3dd4..fcaa28d4 100644
      auto first_tab_rect = visual_tab_rect(0);
      auto strip_width = visual_tab_rect(count() - 1).right() + 1 - first_tab_rect.left() - (2 * HORIZONTAL_TAB_END_ROOM);
      auto available_width = (m_available_width > 0 ? m_available_width : width()) - (2 * HORIZONTAL_TAB_END_ROOM);
-@@ -1817,10 +1839,12 @@ int TabBar::drop_slot_at(QPoint const& position) const
+@@ -1818,10 +1840,12 @@ int TabBar::drop_slot_at(QPoint const& position) const
      // group has slots for it. Of those, the slot is the one whose place is nearest.
      auto pinned_count = pinned_tab_count();
      auto dragging_pinned = dragging_pinned_tab();
@@ -134,7 +134,7 @@ index 468e3dd4..fcaa28d4 100644
              auto offset = QRectF(rect_for_slot(slot)).center() - point;
              if (auto distance = QPointF::dotProduct(offset, offset); distance < best_distance) {
                  best_distance = distance;
-@@ -2687,8 +2711,9 @@ QRect TabBar::vertical_tab_rect(int index, PinnedRegion const& region) const
+@@ -2731,8 +2755,9 @@ QRect TabBar::vertical_tab_rect(int index, PinnedRegion const& region) const
          return { mix(tile.left(), row_in_column.left()), mix(tile.top(), row_in_column.top()), mix(tile.width(), row_in_column.width()), VERTICAL_TAB_HEIGHT };
      }
  
@@ -146,7 +146,7 @@ index 468e3dd4..fcaa28d4 100644
  }
  
  int TabBar::tab_index_at(QPoint const& position) const
-@@ -2736,7 +2761,14 @@ int TabBar::tab_index_at(QPoint const& position) const
+@@ -2780,7 +2805,14 @@ int TabBar::tab_index_at(QPoint const& position) const
          return index < region.count ? index : -1;
      }
  
@@ -162,7 +162,7 @@ index 468e3dd4..fcaa28d4 100644
      if (index >= count())
          return -1;
  
-@@ -2749,7 +2781,7 @@ int TabBar::tab_index_at(QPoint const& position) const
+@@ -2793,7 +2825,7 @@ int TabBar::tab_index_at(QPoint const& position) const
  QSize TabBar::vertical_size_hint(int tab_count) const
  {
      auto region = pinned_region();
@@ -171,7 +171,7 @@ index 468e3dd4..fcaa28d4 100644
  }
  
  bool TabBar::vertical_tabs_are_on_right() const
-@@ -2762,7 +2794,7 @@ int TabBar::max_scroll_offset() const
+@@ -2806,7 +2838,7 @@ int TabBar::max_scroll_offset() const
      if (tab_layout() == TabLayout::Horizontal)
          return count() > 0 ? max(0, tabRect(count() - 1).right() + 1 - width()) : 0;
      auto region = pinned_region();
@@ -180,7 +180,7 @@ index 468e3dd4..fcaa28d4 100644
  }
  
  void TabBar::set_scroll_offset(int offset)
-@@ -3635,6 +3667,21 @@ void TabWidget::set_tree_tabs_widget(QWidget* widget)
+@@ -3697,6 +3729,21 @@ void TabWidget::set_tree_tabs_widget(QWidget* widget)
          rebuild_layout();
  }
  
@@ -202,7 +202,7 @@ index 468e3dd4..fcaa28d4 100644
  void TabWidget::set_tree_tabs_enabled(bool enabled)
  {
      if (m_tree_tabs_enabled == enabled)
-@@ -4589,6 +4636,8 @@ void TabWidget::rebuild_layout_for_horizontal_tabs()
+@@ -4655,6 +4702,8 @@ void TabWidget::rebuild_layout_for_horizontal_tabs()
      add_ladybird_buttons();
      if (m_tree_tabs_widget)
          m_tree_tabs_widget->hide();
@@ -211,7 +211,7 @@ index 468e3dd4..fcaa28d4 100644
      m_tab_bar->show();
      m_tab_bar_row_layout->addWidget(m_tab_bar, 0, Qt::AlignBottom);
      m_tab_bar_row_layout->addSpacing(new_tab_button_room);
-@@ -5010,6 +5059,11 @@ void TabWidget::rebuild_layout_for_vertical_tabs()
+@@ -5081,6 +5130,11 @@ void TabWidget::rebuild_layout_for_vertical_tabs()
          m_vertical_tab_bar_column_layout->addWidget(m_new_tab_button, 0, vertical_tabs_are_on_right() ? Qt::AlignRight : Qt::AlignLeft);
          m_vertical_tab_bar_column_layout->addStretch(1);
      }
@@ -223,7 +223,7 @@ index 468e3dd4..fcaa28d4 100644
  
      // The toolbar's other buttons sit at the bottom of the sidebar that holds it.
      if (m_vertical_tabs_expanded && toolbar_is_in_sidebar() && !toggle_moves_toolbar()) {
-@@ -5341,7 +5395,7 @@ void TabWidget::update_tab_layout()
+@@ -5415,7 +5469,7 @@ void TabWidget::update_tab_layout()
  
      m_tab_bar->set_available_width(available_for_tabs);
  
@@ -233,10 +233,10 @@ index 468e3dd4..fcaa28d4 100644
      m_tab_bar->setFixedWidth(max(0, tab_bar_width));
      place_horizontal_new_tab_button();
 diff --git a/UI/Qt/TabBar.h b/UI/Qt/TabBar.h
-index 434ed5b8..84a429e9 100644
+index f5ecb1371..94d241491 100644
 --- a/UI/Qt/TabBar.h
 +++ b/UI/Qt/TabBar.h
-@@ -104,6 +104,10 @@ public:
+@@ -107,6 +107,10 @@ public:
      void lock_tab_widths();
      void recreate_icons();
      int pinned_tab_count() const;
@@ -245,9 +245,9 @@ index 434ed5b8..84a429e9 100644
 +    int hidden_tab_count(int from_index = 0) const;
 +    int visible_tabs_between(int from_index, int to_index) const;
  
-     void update_loading_ring_animation();
-     void update_microphone_indicators();
-@@ -351,6 +355,8 @@ public:
+     TabBarButton* tab_close_button(int index) const;
+     void set_tab_close_button(int index, TabBarButton*);
+@@ -364,6 +368,8 @@ public:
      void set_vertical_tabs_enabled(bool);
      void set_tree_tabs_widget(QWidget*);
      void set_tree_tabs_enabled(bool);
@@ -256,7 +256,7 @@ index 434ed5b8..84a429e9 100644
      bool tree_tabs_enabled() const { return m_tree_tabs_enabled; }
      Function<void(bool collapsed_rail)> on_tree_tabs_rail_changed;
      void set_everything_in_sidebar(bool);
-@@ -454,6 +460,7 @@ private:
+@@ -467,6 +473,7 @@ private:
  
      TabBar* m_tab_bar { nullptr };
      QWidget* m_tree_tabs_widget { nullptr };

@@ -6,7 +6,7 @@ Subject: [PATCH] LibWeb: inject uBO-compatible scriptlets at document start
 
 
 diff --git a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
-index f7dbe92a..5e0a3187 100644
+index f7dbe92a4..5e0a3187d 100644
 --- a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
 +++ b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
 @@ -29,6 +29,7 @@ pub struct ContentBlockerEngine {
@@ -61,10 +61,10 @@ index f7dbe92a..5e0a3187 100644
  /// - `engine` must be null or a valid pointer returned by `rust_content_blocker_create`
  #[unsafe(no_mangle)]
 diff --git a/Libraries/LibWeb/DOM/Document.cpp b/Libraries/LibWeb/DOM/Document.cpp
-index d4058070..11bc5465 100644
+index 3da7b8661..885bcb7d3 100644
 --- a/Libraries/LibWeb/DOM/Document.cpp
 +++ b/Libraries/LibWeb/DOM/Document.cpp
-@@ -1203,6 +1203,38 @@ void Document::invalidate_content_blocker_style_sheet()
+@@ -1206,6 +1206,38 @@ void Document::invalidate_content_blocker_style_sheet()
      m_content_blocker_style_sheet_checked_ids.clear();
  }
  
@@ -103,7 +103,7 @@ index d4058070..11bc5465 100644
  bool Document::content_blocker_style_sheet_may_need_refresh_for_class_or_id(Utf16FlyString const* id, ReadonlySpan<Utf16FlyString> class_names)
  {
      if (is_decoded_svg() || !m_content_blocker_style_sheet.has_value())
-@@ -8393,6 +8425,8 @@ void Document::update_for_history_step_application(NonnullRefPtr<HTML::SessionHi
+@@ -8380,6 +8412,8 @@ void Document::update_for_history_step_application(NonnullRefPtr<HTML::SessionHi
          if (!scrolling_blocked_in_new_document)
              try_to_scroll_to_the_fragment(allow_text_directive_scroll);
  
@@ -113,10 +113,10 @@ index d4058070..11bc5465 100644
          set_ready_to_run_scripts();
      }
 diff --git a/Libraries/LibWeb/DOM/Document.h b/Libraries/LibWeb/DOM/Document.h
-index 348eb3d9..a437a143 100644
+index 3c523a605..ed2310488 100644
 --- a/Libraries/LibWeb/DOM/Document.h
 +++ b/Libraries/LibWeb/DOM/Document.h
-@@ -1868,6 +1868,7 @@ public:
+@@ -1872,6 +1872,7 @@ public:
      Utf16String const& content_blocker_style_sheet();
      void invalidate_content_blocker_style_sheet();
      bool content_blocker_style_sheet_may_need_refresh_for_class_or_id(Utf16FlyString const* id, ReadonlySpan<Utf16FlyString> class_names);
@@ -124,7 +124,7 @@ index 348eb3d9..a437a143 100644
  
      void exit_pointer_lock();
  
-@@ -2535,6 +2536,7 @@ private:
+@@ -2537,6 +2538,7 @@ private:
      // Class/id tokens already covered by the cached content blocker stylesheet.
      HashTable<Utf16FlyString> m_content_blocker_style_sheet_checked_classes;
      HashTable<Utf16FlyString> m_content_blocker_style_sheet_checked_ids;
@@ -133,7 +133,7 @@ index 348eb3d9..a437a143 100644
      Optional<AK::UnixDateTime> m_last_modified;
  
 diff --git a/Libraries/LibWeb/HTML/LocalNavigable.cpp b/Libraries/LibWeb/HTML/LocalNavigable.cpp
-index 5458adfa..f32af85d 100644
+index 08e981657..09437288e 100644
 --- a/Libraries/LibWeb/HTML/LocalNavigable.cpp
 +++ b/Libraries/LibWeb/HTML/LocalNavigable.cpp
 @@ -1202,6 +1202,9 @@ void LocalNavigable::initialize_navigable(NonnullRefPtr<DocumentState> document_
@@ -147,7 +147,7 @@ index 5458adfa..f32af85d 100644
      // as it hears of each document that later becomes active in the navigable.
      if (!is_top_level_traversable() && !is_stand_in)
 diff --git a/Libraries/LibWeb/HTML/LocalTraversableNavigable.cpp b/Libraries/LibWeb/HTML/LocalTraversableNavigable.cpp
-index f54bbffe..3b644842 100644
+index f54bbffe6..3b6448425 100644
 --- a/Libraries/LibWeb/HTML/LocalTraversableNavigable.cpp
 +++ b/Libraries/LibWeb/HTML/LocalTraversableNavigable.cpp
 @@ -134,6 +134,8 @@ GC::Ref<LocalTraversableNavigable> LocalTraversableNavigable::create_for_new_web
@@ -160,7 +160,7 @@ index f54bbffe..3b644842 100644
  }
  
 diff --git a/Libraries/LibWeb/Internals/Internals.cpp b/Libraries/LibWeb/Internals/Internals.cpp
-index 118e1bae..60df24c7 100644
+index 0d9fde07f..01fa2c091 100644
 --- a/Libraries/LibWeb/Internals/Internals.cpp
 +++ b/Libraries/LibWeb/Internals/Internals.cpp
 @@ -1544,20 +1544,25 @@ WebIDL::ExceptionOr<void> Internals::send_bad_ipc_message_for_testing(Utf16Strin
@@ -215,7 +215,7 @@ index 118e1bae..60df24c7 100644
  {
      auto source_utf8 = TRY_OR_THROW_OOM(window().principal_realm().vm(), source.utf16_view().to_utf8());
 diff --git a/Libraries/LibWeb/Internals/Internals.h b/Libraries/LibWeb/Internals/Internals.h
-index f7cf6a7e..92a9710a 100644
+index aa507cc7f..368948cca 100644
 --- a/Libraries/LibWeb/Internals/Internals.h
 +++ b/Libraries/LibWeb/Internals/Internals.h
 @@ -185,6 +185,7 @@ public:
@@ -227,7 +227,7 @@ index f7cf6a7e..92a9710a 100644
      void set_content_blocking_enabled(bool enabled);
      void begin_layout_trace(Bindings::LayoutTraceOptions const&);
 diff --git a/Libraries/LibWeb/Internals/Internals.idl b/Libraries/LibWeb/Internals/Internals.idl
-index 874f01b8..ed88794f 100644
+index 2c36e90f6..472659a02 100644
 --- a/Libraries/LibWeb/Internals/Internals.idl
 +++ b/Libraries/LibWeb/Internals/Internals.idl
 @@ -200,6 +200,7 @@ interface Internals {
@@ -239,7 +239,7 @@ index 874f01b8..ed88794f 100644
      undefined setContentBlockingEnabled(boolean enabled);
      // Traces the layout passes of the document until takeLayoutTrace(), and its layout tree builds where asked.
 diff --git a/Libraries/LibWeb/Loader/ContentBlocker.cpp b/Libraries/LibWeb/Loader/ContentBlocker.cpp
-index 48351e35..58716b45 100644
+index 48351e35d..58716b45b 100644
 --- a/Libraries/LibWeb/Loader/ContentBlocker.cpp
 +++ b/Libraries/LibWeb/Loader/ContentBlocker.cpp
 @@ -271,6 +271,31 @@ bool ContentBlocker::has_generic_cosmetic_selectors_for_url(URL::URL const& url,
@@ -275,7 +275,7 @@ index 48351e35..58716b45 100644
  {
      using Fetch::Infrastructure::Request;
 diff --git a/Libraries/LibWeb/Loader/ContentBlocker.h b/Libraries/LibWeb/Loader/ContentBlocker.h
-index ee327a67..b8c299d0 100644
+index ee327a67e..b8c299d0c 100644
 --- a/Libraries/LibWeb/Loader/ContentBlocker.h
 +++ b/Libraries/LibWeb/Loader/ContentBlocker.h
 @@ -56,6 +56,8 @@ public:

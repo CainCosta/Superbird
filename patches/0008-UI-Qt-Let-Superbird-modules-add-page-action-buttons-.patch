@@ -6,7 +6,7 @@ Subject: [PATCH] UI/Qt: Let Superbird modules add page action buttons to the
 
 
 diff --git a/UI/Qt/LocationEdit.cpp b/UI/Qt/LocationEdit.cpp
-index 2b45094e..a48fdff3 100644
+index 3bb329f1b..b10d99371 100644
 --- a/UI/Qt/LocationEdit.cpp
 +++ b/UI/Qt/LocationEdit.cpp
 @@ -675,6 +675,33 @@ QWidget& LocationEdit::translate_button() const
@@ -43,7 +43,7 @@ index 2b45094e..a48fdff3 100644
  // Like the bookmark star, the translate button is about the page, so it stands aside while the text is being edited.
  void LocationEdit::update_translate_button()
  {
-@@ -1189,6 +1216,12 @@ void LocationEdit::update_trailing_item_positions()
+@@ -1193,6 +1220,12 @@ void LocationEdit::update_trailing_item_positions()
      m_translate_button->raise();
      if (!m_translate_button->isHidden())
          items_x -= translate_button_size.width();
@@ -56,7 +56,7 @@ index 2b45094e..a48fdff3 100644
  
      auto completion_title_size = m_completion_title->size();
      m_completion_title->move(width() - LOCATION_TRAILING_EDGE_MARGIN - LOCATION_TEXT_PADDING - completion_title_size.width(), (height() - completion_title_size.height()) / 2);
-@@ -1233,6 +1266,10 @@ int LocationEdit::trailing_text_margin() const
+@@ -1237,6 +1270,10 @@ int LocationEdit::trailing_text_margin() const
  
      if (m_translate_button && !m_translate_button->isHidden())
          margin += m_translate_button->width();
@@ -68,10 +68,10 @@ index 2b45094e..a48fdff3 100644
          margin += m_zoom_indicator_button->width() + LOCATION_ZOOM_CHIP_GAP;
      for (auto* chip : { m_location_in_use_chip, m_microphone_in_use_chip }) {
 diff --git a/UI/Qt/LocationEdit.h b/UI/Qt/LocationEdit.h
-index 1044b973..b9e502b5 100644
+index a23969a27..f16494ef2 100644
 --- a/UI/Qt/LocationEdit.h
 +++ b/UI/Qt/LocationEdit.h
-@@ -61,6 +61,9 @@ public:
+@@ -62,6 +62,9 @@ public:
      // The translate button stands in the field, before the bookmark star, while the page can be translated.
      void set_translate_action(QAction*);
      QWidget& translate_button() const;
@@ -81,7 +81,7 @@ index 1044b973..b9e502b5 100644
      // Shows, while the page uses the user's location or microphone, a chip that says so.
      void set_location_in_use(bool);
      void set_microphone_in_use(bool);
-@@ -150,6 +153,7 @@ private:
+@@ -152,6 +155,7 @@ private:
      qreal m_site_settings_knob_travel { 0 };
      QToolButton* m_trailing_action_button { nullptr };
      QToolButton* m_translate_button { nullptr };

@@ -6,7 +6,7 @@ Subject: [PATCH] LibWeb/ContentBlocker: keep procedural cosmetic selectors out
 
 
 diff --git a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
-index 91bde90b..71a34f32 100644
+index 91bde90b0..71a34f329 100644
 --- a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
 +++ b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
 @@ -302,6 +302,7 @@ fn cosmetic_css_for_url(engine: &ContentBlockerEngine, url: &str, classes: &[&st

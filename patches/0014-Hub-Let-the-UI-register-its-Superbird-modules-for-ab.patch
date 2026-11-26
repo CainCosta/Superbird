@@ -6,10 +6,10 @@ Subject: [PATCH] Hub: Let the UI register its Superbird modules for
 
 
 diff --git a/Services/Hub/ConnectionFromUI.cpp b/Services/Hub/ConnectionFromUI.cpp
-index 4020868b..fd9c7b24 100644
+index 607765a8e..8d8ff36e9 100644
 --- a/Services/Hub/ConnectionFromUI.cpp
 +++ b/Services/Hub/ConnectionFromUI.cpp
-@@ -954,6 +954,17 @@ void ConnectionFromUI::update_settings(u64 change_id, ByteString changes_json)
+@@ -959,6 +959,17 @@ void ConnectionFromUI::update_settings(u64 change_id, ByteString changes_json)
      Application::settings().replace_with_json(settings, WebView::Settings::PersistChange::Yes);
  }
  
@@ -28,7 +28,7 @@ index 4020868b..fd9c7b24 100644
  {
      Application::the().destroy_view(view_id);
 diff --git a/Services/Hub/ConnectionFromUI.h b/Services/Hub/ConnectionFromUI.h
-index 06911ac1..31d2f159 100644
+index 06911ac1d..31d2f159b 100644
 --- a/Services/Hub/ConnectionFromUI.h
 +++ b/Services/Hub/ConnectionFromUI.h
 @@ -118,6 +118,7 @@ private:
@@ -40,7 +40,7 @@ index 06911ac1..31d2f159 100644
      virtual void view_prepare_for_immediate_close(u64 view_id) override;
      virtual void view_prepare_for_close_without_prompting(u64 view_id, u64 close_id) override;
 diff --git a/Services/Hub/HubServer.ipc b/Services/Hub/HubServer.ipc
-index 45706479..25a394a1 100644
+index 45706479f..25a394a19 100644
 --- a/Services/Hub/HubServer.ipc
 +++ b/Services/Hub/HubServer.ipc
 @@ -243,6 +243,7 @@ endpoint HubServer

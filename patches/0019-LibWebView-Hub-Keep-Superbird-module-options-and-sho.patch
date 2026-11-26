@@ -11,10 +11,10 @@ interfaces. Values persist under the superbird settings key.
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
 diff --git a/Libraries/LibWebView/Settings.cpp b/Libraries/LibWebView/Settings.cpp
-index 32c8be3d..834d97fb 100644
+index 88bbc529d..9fbeaed18 100644
 --- a/Libraries/LibWebView/Settings.cpp
 +++ b/Libraries/LibWebView/Settings.cpp
-@@ -70,6 +70,8 @@ static constexpr auto TAB_PROCESSES_KEY = "tabProcesses"sv;
+@@ -71,6 +71,8 @@ static constexpr auto TAB_PROCESSES_KEY = "tabProcesses"sv;
  
  static constexpr auto SUPERBIRD_SETTINGS_KEY = "superbird"sv;
  static constexpr auto SUPERBIRD_MODULES_KEY = "modules"sv;
@@ -23,7 +23,7 @@ index 32c8be3d..834d97fb 100644
  
  static constexpr auto BROWSING_BEHAVIOR_KEY = "browsingBehavior"sv;
  static constexpr auto ENABLE_AUTOSCROLL_KEY = "enableAutoscroll"sv;
-@@ -946,6 +948,18 @@ JsonValue Settings::serialize_json() const
+@@ -956,6 +958,18 @@ JsonValue Settings::serialize_json() const
          superbird_modules.set(module_id, enabled);
      JsonObject superbird_settings;
      superbird_settings.set(SUPERBIRD_MODULES_KEY, move(superbird_modules));
@@ -42,7 +42,7 @@ index 32c8be3d..834d97fb 100644
      settings.set(SUPERBIRD_SETTINGS_KEY, move(superbird_settings));
  
      JsonObject browsing_behavior;
-@@ -1412,6 +1426,24 @@ SuperbirdSettings Settings::parse_superbird_settings(JsonValue const& settings)
+@@ -1424,6 +1438,24 @@ SuperbirdSettings Settings::parse_superbird_settings(JsonValue const& settings)
                  superbird_settings.enabled_modules.set(key, value.as_bool());
          });
      }
@@ -67,7 +67,7 @@ index 32c8be3d..834d97fb 100644
      return superbird_settings;
  }
  
-@@ -1436,6 +1468,34 @@ void Settings::set_superbird_module_enabled(String const& module_id, bool enable
+@@ -1448,6 +1480,34 @@ void Settings::set_superbird_module_enabled(String const& module_id, bool enable
          observer.superbird_settings_changed();
  }
  
@@ -103,10 +103,10 @@ index 32c8be3d..834d97fb 100644
  {
      if (module.id.is_empty())
 diff --git a/Libraries/LibWebView/Settings.h b/Libraries/LibWebView/Settings.h
-index db75b81e..ba054c0b 100644
+index 27c532827..d4b0630ea 100644
 --- a/Libraries/LibWebView/Settings.h
 +++ b/Libraries/LibWebView/Settings.h
-@@ -130,6 +130,10 @@ struct TabSettings {
+@@ -131,6 +131,10 @@ struct TabSettings {
  
  struct SuperbirdSettings {
      HashMap<String, bool> enabled_modules;
@@ -117,7 +117,7 @@ index db75b81e..ba054c0b 100644
  };
  
  // A Superbird module compiled into this build, as the UI registers it for about:settings to list.
-@@ -138,6 +142,8 @@ struct SuperbirdModuleDescriptor {
+@@ -139,6 +143,8 @@ struct SuperbirdModuleDescriptor {
      String name;
      String description;
      bool enabled_by_default { true };
@@ -126,7 +126,7 @@ index db75b81e..ba054c0b 100644
  };
  
  struct SearchEngineSettings {
-@@ -358,6 +364,9 @@ public:
+@@ -360,6 +366,9 @@ public:
      SuperbirdSettings const& superbird_settings() const { return m_superbird_settings; }
      void set_superbird_settings(SuperbirdSettings);
      void set_superbird_module_enabled(String const& module_id, bool enabled);
@@ -137,7 +137,7 @@ index db75b81e..ba054c0b 100644
      Vector<SuperbirdModuleDescriptor> const& superbird_modules() const { return m_superbird_modules; }
  
 diff --git a/Libraries/LibWebView/WebUI/SettingsUI.cpp b/Libraries/LibWebView/WebUI/SettingsUI.cpp
-index 022239b4..2c026da2 100644
+index 022239b49..2c026da24 100644
 --- a/Libraries/LibWebView/WebUI/SettingsUI.cpp
 +++ b/Libraries/LibWebView/WebUI/SettingsUI.cpp
 @@ -101,6 +101,12 @@ void SettingsUI::register_interfaces()
@@ -202,7 +202,7 @@ index 022239b4..2c026da2 100644
  {
      auto parsed_browsing_behavior = Settings::parse_browsing_behavior(browsing_behavior);
 diff --git a/Libraries/LibWebView/WebUI/SettingsUI.h b/Libraries/LibWebView/WebUI/SettingsUI.h
-index fdf7d508..55623efb 100644
+index fdf7d508a..55623efbd 100644
 --- a/Libraries/LibWebView/WebUI/SettingsUI.h
 +++ b/Libraries/LibWebView/WebUI/SettingsUI.h
 @@ -81,6 +81,8 @@ private:
@@ -215,10 +215,10 @@ index fdf7d508..55623efb 100644
      void set_config_variable(JsonValue const&);
  
 diff --git a/Services/Hub/ConnectionFromUI.cpp b/Services/Hub/ConnectionFromUI.cpp
-index fd9c7b24..9e3325c0 100644
+index 8d8ff36e9..8da2bbb71 100644
 --- a/Services/Hub/ConnectionFromUI.cpp
 +++ b/Services/Hub/ConnectionFromUI.cpp
-@@ -955,13 +955,14 @@ void ConnectionFromUI::update_settings(u64 change_id, ByteString changes_json)
+@@ -960,13 +960,14 @@ void ConnectionFromUI::update_settings(u64 change_id, ByteString changes_json)
  }
  
  // The UI compiles Superbird's modules in, and tells this process, which serves about:settings, which ones it has.
@@ -235,7 +235,7 @@ index fd9c7b24..9e3325c0 100644
  }
  
 diff --git a/Services/Hub/ConnectionFromUI.h b/Services/Hub/ConnectionFromUI.h
-index 31d2f159..e581de7e 100644
+index 31d2f159b..e581de7e5 100644
 --- a/Services/Hub/ConnectionFromUI.h
 +++ b/Services/Hub/ConnectionFromUI.h
 @@ -118,7 +118,7 @@ private:
@@ -248,7 +248,7 @@ index 31d2f159..e581de7e 100644
      virtual void view_prepare_for_immediate_close(u64 view_id) override;
      virtual void view_prepare_for_close_without_prompting(u64 view_id, u64 close_id) override;
 diff --git a/Services/Hub/HubServer.ipc b/Services/Hub/HubServer.ipc
-index 25a394a1..d5656e08 100644
+index 25a394a19..d5656e086 100644
 --- a/Services/Hub/HubServer.ipc
 +++ b/Services/Hub/HubServer.ipc
 @@ -243,7 +243,7 @@ endpoint HubServer

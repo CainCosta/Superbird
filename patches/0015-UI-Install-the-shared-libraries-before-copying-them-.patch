@@ -6,7 +6,7 @@ Subject: [PATCH] UI: Install the shared libraries before copying them into the
 
 
 diff --git a/UI/cmake/InstallRules.cmake b/UI/cmake/InstallRules.cmake
-index 904f743b..11ffbb77 100644
+index cef917204..6b30b426c 100644
 --- a/UI/cmake/InstallRules.cmake
 +++ b/UI/cmake/InstallRules.cmake
 @@ -70,6 +70,22 @@ list(REMOVE_DUPLICATES all_required_lagom_libraries)
