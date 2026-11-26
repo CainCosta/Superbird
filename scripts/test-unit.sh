@@ -161,6 +161,50 @@ CB_DIR="$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/ContentBlocking"
     -o "$TMP_DIR/test_content_blocking"
 "$TMP_DIR/test_content_blocking"
 
+PW_DIR="$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/Passwords/Core"
+OPENSSL_CFLAGS=()
+OPENSSL_LIBS=()
+if [ -d "$ROOT_DIR/upstream/Build/release/vcpkg_installed" ]; then
+    VCPKG_OSSL_INC="$(find "$ROOT_DIR/upstream/Build/release/vcpkg_installed" -maxdepth 3 -path "*/include/openssl/evp.h" 2>/dev/null | head -n 1 || true)"
+    if [ -n "$VCPKG_OSSL_INC" ]; then
+        VCPKG_PREFIX="$(dirname "$(dirname "$(dirname "$VCPKG_OSSL_INC")")")"
+        OPENSSL_CFLAGS+=(-I"$VCPKG_PREFIX/include")
+        OPENSSL_LIBS+=(-L"$VCPKG_PREFIX/lib" -Wl,-rpath,"$VCPKG_PREFIX/lib" -lcrypto)
+    fi
+fi
+if [ ${#OPENSSL_LIBS[@]} -eq 0 ] && command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libcrypto; then
+    read -r -a OPENSSL_CFLAGS <<< "$(pkg-config --cflags libcrypto)"
+    read -r -a OPENSSL_LIBS <<< "$(pkg-config --libs libcrypto)"
+elif [ ${#OPENSSL_LIBS[@]} -eq 0 ]; then
+    for brew_prefix in /opt/homebrew/opt/openssl@3 /opt/homebrew/opt/openssl@4 /usr/local/opt/openssl@3; do
+        if [ -f "$brew_prefix/include/openssl/evp.h" ]; then
+            OPENSSL_CFLAGS+=(-I"$brew_prefix/include")
+            OPENSSL_LIBS+=(-L"$brew_prefix/lib" -Wl,-rpath,"$brew_prefix/lib" -lcrypto)
+            break
+        fi
+    done
+fi
+if [ ${#OPENSSL_LIBS[@]} -eq 0 ]; then
+    OPENSSL_LIBS+=(-lcrypto)
+fi
+
+"$CXX" "${COMMON_FLAGS[@]}" "${OPENSSL_CFLAGS[@]}" \
+    "$ROOT_DIR/tests/TestPasswords.cpp" \
+    "$PW_DIR/BitwardenCrypto.cpp" \
+    "$PW_DIR/BitwardenProtocol.cpp" \
+    "$PW_DIR/LocalVaultCrypto.cpp" \
+    "$PW_DIR/UriMatcher.cpp" \
+    "$PW_DIR/Totp.cpp" \
+    "$PW_DIR/PasswordGenerator.cpp" \
+    "$PW_DIR/CsvTransfer.cpp" \
+    "$PW_DIR/OnePasswordParser.cpp" \
+    "$PW_DIR/PasswordsActions.cpp" \
+    "$ROOT_DIR/overlay/UI/Qt/Superbird/Core/ModuleRegistry.cpp" \
+    "$TMP_DIR/ak_stubs.cpp" \
+    "${OPENSSL_LIBS[@]}" -pthread \
+    -o "$TMP_DIR/test_passwords"
+"$TMP_DIR/test_passwords"
+
 if [ -f "$ROOT_DIR/upstream/Libraries/LibWeb/ContentBlocker/Rust/src/superbird.rs" ] && command -v cargo >/dev/null 2>&1; then
     cargo test --manifest-path "$ROOT_DIR/upstream/Libraries/LibWeb/ContentBlocker/Rust/Cargo.toml"
 fi

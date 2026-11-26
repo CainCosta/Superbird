@@ -33,6 +33,9 @@
 #if defined(SUPERBIRD_MODULE_CONTENT_BLOCKING)
 #    include <UI/Qt/Superbird/Modules/ContentBlocking/ContentBlockingModule.h>
 #endif
+#if defined(SUPERBIRD_MODULE_PASSWORDS)
+#    include <UI/Qt/Superbird/Modules/Passwords/PasswordsModule.h>
+#endif
 
 #include <QApplication>
 #include <QHash>
@@ -93,6 +96,9 @@ void WindowHost::register_compiled_modules()
 #endif
 #if defined(SUPERBIRD_MODULE_CONTENT_BLOCKING)
     register_compiled_module(ContentBlockingModule::module_info(), ContentBlockingModule::register_actions);
+#endif
+#if defined(SUPERBIRD_MODULE_PASSWORDS)
+    register_compiled_module(PasswordsModule::module_info(), PasswordsModule::register_actions);
 #endif
 }
 
@@ -340,6 +346,9 @@ WindowHost::WindowHost(Ladybird::BrowserWindow& window)
 #if defined(SUPERBIRD_MODULE_CONTENT_BLOCKING)
     m_modules.append(make<ContentBlockingModule>(m_window));
 #endif
+#if defined(SUPERBIRD_MODULE_PASSWORDS)
+    m_modules.append(make<PasswordsModule>(m_window));
+#endif
 
     ModuleRegistry::the().add_observer(*this);
 
@@ -492,6 +501,24 @@ void WindowHost::extend_link_context_menu(Ladybird::RemoteView& view, Ladybird::
         for (auto& module : host.m_modules) {
             if (ModuleRegistry::the().is_enabled(module->id()))
                 module->extend_link_context_menu(*tab, menu, url);
+        }
+        return;
+    }
+}
+
+void WindowHost::extend_editable_context_menu(Ladybird::RemoteView& view, Ladybird::Menu& menu, URL::URL const& url)
+{
+    for (auto* widget : QApplication::topLevelWidgets()) {
+        auto* window = dynamic_cast<Ladybird::BrowserWindow*>(widget);
+        if (!window)
+            continue;
+        auto* tab = window->tab_for_view(view);
+        if (!tab)
+            continue;
+        auto& host = window->superbird();
+        for (auto& module : host.m_modules) {
+            if (ModuleRegistry::the().is_enabled(module->id()))
+                module->extend_editable_context_menu(*tab, menu, url);
         }
         return;
     }
