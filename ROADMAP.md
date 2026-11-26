@@ -142,6 +142,11 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
   - Inline quick-filter box at the top of the tree sidebar (filter open tabs by title/URL without leaving the sidebar).
   - Subtle branch color tags (dot/bar accent) persisted in `TreeTabs.db`.
 
+### M7 — uBO-compatible Content Blocking
+*Full uBO filter list, scriptlet, redirect, CSP, and procedural cosmetic parity built on `adblock-rust` with strict GPLv3 isolation.*
+
+> **Status: ✅ Shipped (M0–M6).** Enables uBO's 7 default filter lists plus EasyList and EasyPrivacy by default (with per-list `! Expires:` / `! Diff-Expires:` refresh), `!#if` preprocessing, byte-framed trust-isolated bundles (`trusted-*` scriptlets gated to trusted lists, custom filters untrusted by default), document-start scriptlet injection across main docs/iframes/`srcdoc`/`about:blank`, `$redirect`, `$removeparam`, `$csp`, WebSocket blocking, procedural & action cosmetic filtering (`:has-text`, `:upward`, `:matches-css`, `:matches-attr`, `:matches-path`, `:min-text-length`, `:xpath`, `:remove()`, `:remove-attr()`, `:remove-class()`, `:style()`), per-site **Cosmetic filtering** toggle in `SiteSettingsPopover`, live **uBO-compatible** vs **Default Ladybird** mode switch in `about:settings -> Superbird`, `SBCE0001` binary snapshot cache (110.9 ms cold → 11.6 ms warm; 4.95 µs/req), opt-in filtering logger, and runtime `ubo-resources.json` converter (`scripts/build-ubo-resources.mjs`, zero GPLv3 assets vendored). Patches `0022`–`0028` (`+712/−63` across upstream seams; 3,703 lines in `overlay/`, `scripts/`, `tests/`). Design, benchmarks & known gaps: `docs/design/proposal-ublock-origin.md`.
+
 ---
 
 ## Execution Order
@@ -155,6 +160,7 @@ Each module below is independent, toggleable in `about:settings -> Superbird`, a
 | **M4** ✅ | Split View (2-pane / grid tab tiling) | Small (`TabWidget` page host seam) | Split layout unit tests + focus/close/resize stability |
 | **M5** ✅ | Glance (Quick Peek floating sheet + promote to tab) | Tiny (link modifier / context menu hook) | Glance lifecycle tests + promotes cleanly into Tree Tabs |
 | **M6** ✅ | Tree-Style Tabs Wave 1 polish (sidebar filter box + branch color tags) | None (overlay-only!) | TreeTabModel unit tests |
+| **M7** ✅ | uBO-compatible Content Blocking (lists, `!#if`, scriptlets, `$redirect`/`$removeparam`/`$csp`/WebSocket, procedural cosmetics, per-site cosmetic switch, mode switch, snapshot cache, opt-in logger) | 7 seams (`0022`–`0028`, `+712/−63`) | Rust/C++/Node unit tests, LibWeb `test-web` (16/16), WebDriver tests, live YouTube & Chromium+uBO 1.77.2 comparison |
 
 ---
 

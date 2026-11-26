@@ -2150,4 +2150,135 @@ example.com##:xpath(//div[@data-promo='1'])
 
         let _ = std::fs::remove_dir_all(&cache_dir);
     }
+
+    #[test]
+    #[ignore]
+    fn bench_full_ubo_profile() {
+        let profile_dir = std::path::Path::new("/tmp/sb-m6-profile/data/ContentBlocking");
+        let list_ids = [
+            ("easyList", false),
+            ("easyPrivacy", false),
+            ("uboFilters", true),
+            ("uboBadware", true),
+            ("uboPrivacy", true),
+            ("uboUnbreak", true),
+            ("uboQuickFixes", true),
+            ("peterLowe", false),
+            ("urlhaus", false),
+        ];
+
+        let mut ubo_bundle = String::from("!superbird:meta version=1 mode=ubo logger=0\n");
+        let mut default_bundle = String::new();
+        for (id, trusted) in list_ids {
+            let body = std::fs::read_to_string(profile_dir.join("Lists").join(format!("{id}.txt")))
+                .expect("missing list in /tmp/sb-m6-profile");
+            ubo_bundle.push_str(&make_bundle_list(
+                id,
+                if trusted { 1 } else { 0 },
+                "standard",
+                &body,
+            ));
+            if id == "easyList" || id == "easyPrivacy" {
+                default_bundle.push_str(&body);
+                default_bundle.push('\n');
+            }
+        }
+        let resources_json =
+            std::fs::read_to_string(profile_dir.join("Resources/ubo-resources.json"))
+                .expect("missing ubo-resources.json");
+        ubo_bundle.push_str(&make_bundle_resources(&resources_json));
+        ubo_bundle.push_str("!superbird:end\n");
+
+        let cache_dir = std::env::temp_dir().join("superbird-m6-bench-cache");
+        let _ = std::fs::remove_dir_all(&cache_dir);
+
+        // 1. Cold uBO compile
+        unsafe { std::env::set_var("SUPERBIRD_CONTENT_BLOCKER_CACHE_DIR", cache_dir.to_str().unwrap()) };
+        let t0 = Instant::now();
+        let engine_cold = create_engine(&ubo_bundle);
+        let cold_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+        // 2. Warm uBO snapshot reload
+        let t1 = Instant::now();
+        let engine_warm = create_engine(&ubo_bundle);
+        let warm_ms = t1.elapsed().as_secs_f64() * 1000.0;
+
+        // 3. Default Ladybird blocker (EasyList + EasyPrivacy)
+        let t2 = Instant::now();
+        let mut filter_set = FilterSet::new(false);
+        filter_set.add_filter_list(default_bundle.clone(), ParseOptions::default());
+        let _default_engine = adblock::engine::Engine::new_with_filter_set(filter_set);
+        let _default_generic = GenericSelectorListRules::from_rules(&default_bundle);
+        let default_ms = t2.elapsed().as_secs_f64() * 1000.0;
+
+        // 4. Per-request check benchmark (10,000 checks)
+        let sample_reqs = [
+            ("https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js", "https://www.forbes.com/", "script"),
+            ("https://www.google-analytics.com/analytics.js", "https://www.theverge.com/", "script"),
+            ("https://doubleclick.net/pixel.gif", "https://www.cnn.com/", "image"),
+            ("https://www.youtube.com/youtubei/v1/player?key=abc", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "xhr"),
+            ("https://www.youtube.com/api/stats/ads?adformat=1", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "xhr"),
+            ("https://example.com/article?id=123&utm_source=twitter&fbclid=xyz", "https://example.com/", "document"),
+            ("https://github.com/assets/app.js", "https://github.com/", "script"),
+            ("https://en.wikipedia.org/static/images/logo.png", "https://en.wikipedia.org/wiki/Web_browser", "image"),
+            ("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "image"),
+            ("https://cdn.jsdelivr.net/npm/react/umd/react.production.min.js", "https://app.example.org/", "script"),
+        ];
+        let mut blocked = 0usize;
+        let mut redirected = 0usize;
+        let mut stripped = 0usize;
+        let t_req = Instant::now();
+        for _ in 0..1000 {
+            for (u, s, rt) in sample_reqs {
+                let res = check_network_request(&engine_warm, u, s, rt, "GET");
+                if !res.redirect_data_url.is_empty() {
+                    redirected += 1;
+                } else if res.matched {
+                    blocked += 1;
+                }
+                if !res.rewritten_url.is_empty() {
+                    stripped += 1;
+                }
+            }
+        }
+        let req_total_ms = t_req.elapsed().as_secs_f64() * 1000.0;
+        let per_req_us = (req_total_ms * 1000.0) / 10_000.0;
+
+        // 5. Cosmetic + scriptlet injection cost on YouTube
+        let t_yt = Instant::now();
+        let yt_script = injected_script_for_url(&engine_warm, "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+        let yt_script_ms = t_yt.elapsed().as_secs_f64() * 1000.0;
+        let t_yt_css = Instant::now();
+        let yt_css = crate::cosmetic_css_for_url(&engine_warm, "https://www.youtube.com/watch?v=dQw4w9WgXcQ", &["ytp-ad-module", "ad-showing"], &["player-ads"]);
+        let yt_css_ms = t_yt_css.elapsed().as_secs_f64() * 1000.0;
+
+        let snapshot_size: u64 = std::fs::read_dir(&cache_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.metadata().map(|m| m.len()).unwrap_or(0))
+            .sum();
+
+        println!("=== M6 RUST ENGINE BENCHMARK (RELEASE) ===");
+        println!("bundle_bytes={} cold_ubo_ms={:.2} warm_ubo_ms={:.2} default_2list_ms={:.2}",
+            ubo_bundle.len(), cold_ms, warm_ms, default_ms);
+        println!("cold_cache_hit={} warm_cache_hit={} snapshot_bytes={}",
+            engine_cold.stats.cache_hit, engine_warm.stats.cache_hit, snapshot_size);
+        println!("10k_checks_ms={:.2} per_req_us={:.2} blocked={} redirected={} stripped={}",
+            req_total_ms, per_req_us, blocked, redirected, stripped);
+        println!("youtube_scriptlet_ms={:.2} youtube_script_bytes={} youtube_css_ms={:.2} youtube_css_bytes={}",
+            yt_script_ms, yt_script.len(), yt_css_ms, yt_css.len());
+        println!("missing_resources_after_yt={}", missing_resources_json(&engine_warm));
+        println!("stats_warm={}", engine_stats_json(&engine_warm));
+
+        // Corrupt snapshot recovery check
+        for entry in std::fs::read_dir(&cache_dir).unwrap().flatten() {
+            std::fs::write(entry.path(), b"SBCE0001\x04\x00\x00\x00BAD!").unwrap();
+        }
+        let recovered = create_engine(&ubo_bundle);
+        assert!(!recovered.stats.cache_hit);
+        assert!(check_network_request(&recovered, sample_reqs[0].0, sample_reqs[0].1, sample_reqs[0].2, "GET").matched);
+        println!("corrupt_snapshot_recovery=PASS");
+
+        let _ = std::fs::remove_dir_all(&cache_dir);
+    }
 }
