@@ -6,10 +6,13 @@
 
 #include <UI/Qt/Superbird/Modules/Passwords/Keyring/Keyring.h>
 
+// Must precede the Qt headers. Qt defines `signals`, `slots`, and `emit` as macros, while GLib's GDBus
+// introspection structs have members with those exact names (e.g. `GDBusSignalInfo **signals;` in
+// GDBusInterfaceInfo), so including Qt first rewrites them into invalid C++.
+#include <gio/gio.h>
+
 #include <QCoreApplication>
 #include <QMetaObject>
-
-#include <gio/gio.h>
 
 #include <memory>
 #include <thread>
