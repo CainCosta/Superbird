@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 14:11:54 -0600
+Subject: [PATCH] Meta: Add the Superbird copyright notice to the shipped
+ license file
+
+
+diff --git a/LICENSE b/LICENSE
+index e6ea97f97..3f4d4be68 100644
+--- a/LICENSE
++++ b/LICENSE
+@@ -1,6 +1,7 @@
+ BSD 2-Clause License
+ 
+ Copyright (c) 2018-present, the Ladybird developers.
++Copyright (c) 2026-present, the Superbird developers.
+ All rights reserved.
+ 
+ Redistribution and use in source and binary forms, with or without

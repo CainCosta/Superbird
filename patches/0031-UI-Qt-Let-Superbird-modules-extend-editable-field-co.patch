@@ -6,7 +6,7 @@ Subject: [PATCH] UI/Qt: Let Superbird modules extend editable field context
 
 
 diff --git a/UI/Qt/ContextMenus.cpp b/UI/Qt/ContextMenus.cpp
-index 352dfb67..26a060c4 100644
+index 352dfb674..26a060c44 100644
 --- a/UI/Qt/ContextMenus.cpp
 +++ b/UI/Qt/ContextMenus.cpp
 @@ -220,6 +220,10 @@ static NonnullRefPtr<Menu> create_page_context_menu(RemoteView& view, ContextMen

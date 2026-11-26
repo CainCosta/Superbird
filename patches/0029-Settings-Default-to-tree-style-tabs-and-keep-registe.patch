@@ -6,7 +6,7 @@ Subject: [PATCH] Settings: Default to tree-style tabs and keep registered
 
 
 diff --git a/Base/res/ladybird/about-pages/welcome.html b/Base/res/ladybird/about-pages/welcome.html
-index d8446ef9..a22ff121 100644
+index d8446ef9d..a22ff1211 100644
 --- a/Base/res/ladybird/about-pages/welcome.html
 +++ b/Base/res/ladybird/about-pages/welcome.html
 @@ -58,7 +58,7 @@ SPDX-License-Identifier: BSD-2-Clause
@@ -28,7 +28,7 @@ index d8446ef9..a22ff121 100644
                                  <span class="preview-sidebar"><i></i><i class="active"></i><i></i></span>
                                  <span class="preview-main"
 diff --git a/Libraries/LibWebView/Settings.h b/Libraries/LibWebView/Settings.h
-index 51cbdf33..da218874 100644
+index 51cbdf33a..da218874d 100644
 --- a/Libraries/LibWebView/Settings.h
 +++ b/Libraries/LibWebView/Settings.h
 @@ -111,14 +111,14 @@ enum class TreeTabChildPosition : u8 {
@@ -65,7 +65,7 @@ index 51cbdf33..da218874 100644
  };
  
 diff --git a/Tests/LibWebView/TestStartupSettings.cpp b/Tests/LibWebView/TestStartupSettings.cpp
-index 6d9025d0..24871fbd 100644
+index 6d9025d02..24871fbd3 100644
 --- a/Tests/LibWebView/TestStartupSettings.cpp
 +++ b/Tests/LibWebView/TestStartupSettings.cpp
 @@ -66,3 +66,45 @@ TEST_CASE(a_non_boolean_saved_value_leaves_restoring_off)

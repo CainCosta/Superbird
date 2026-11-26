@@ -38,6 +38,7 @@ git -C "$UPSTREAM_DIR" format-patch \
     --zero-commit \
     --no-signature \
     --no-stat \
+    --abbrev=9 \
     -N \
     -o "$PATCHES_DIR" \
     "${BASE_SHA}..HEAD"
