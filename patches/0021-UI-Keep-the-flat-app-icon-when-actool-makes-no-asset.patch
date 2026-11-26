@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 18:18:36 -0600
+Subject: [PATCH] UI: Keep the flat app icon when actool makes no asset catalog
+
+actool can finish without writing Assets.car, which failed the bundle
+step on CI. Now its output is shown and the bundle keeps app_icon.icns.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+diff --git a/UI/CMakeLists.txt b/UI/CMakeLists.txt
+index b93e108b..465954cb 100644
+--- a/UI/CMakeLists.txt
++++ b/UI/CMakeLists.txt
+@@ -88,18 +88,14 @@ function(create_ladybird_bundle target_name)
+             )
+ 
+             set(asset_catalog_dir "${CMAKE_CURRENT_BINARY_DIR}/${target_name}_asset_catalog")
++            # NB: actool can succeed without making the catalog, and the bundle then keeps its flat icon.
+             add_custom_command(TARGET ${target_name} POST_BUILD
+-                COMMAND "${CMAKE_COMMAND}" -E make_directory "${asset_catalog_dir}"
+                 COMMAND "${CMAKE_COMMAND}"
+-                    "-DLOG=${CMAKE_CURRENT_BINARY_DIR}/${target_name}-actool.log"
+-                    -P "${LADYBIRD_SOURCE_DIR}/Meta/CMake/run_quiet.cmake"
+-                    --
+-                    xcrun actool "${icon_composer_icon}" --compile "${asset_catalog_dir}"
+-                    --app-icon AppIcon --platform macosx --target-device mac
+-                    --minimum-deployment-target "${CMAKE_OSX_DEPLOYMENT_TARGET}"
+-                    --output-partial-info-plist "${asset_catalog_dir}/partial.plist"
+-                    --errors --warnings --output-format human-readable-text
+-                COMMAND "${CMAKE_COMMAND}" -E copy "${asset_catalog_dir}/Assets.car" "${bundle_dir}/Contents/Resources/Assets.car"
++                    "-DICON=${icon_composer_icon}"
++                    "-DCATALOG=${asset_catalog_dir}"
++                    "-DDEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}"
++                    "-DRESOURCES=${bundle_dir}/Contents/Resources"
++                    -P "${LADYBIRD_SOURCE_DIR}/Meta/CMake/compile_icon_composer_icon.cmake"
+                 VERBATIM
+             )
+         endif()
