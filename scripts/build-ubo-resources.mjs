@@ -160,8 +160,13 @@ async function convertUboDirectory(uboDir) {
         if (!entry || !entry.name || typeof entry.fn !== "function") continue;
 
         const isHelper = entry.name.endsWith(".fn");
-        const source = normalizeFunctionSource(entry.fn, entry.name);
-        if (!FUNCTION_DECL_RE.test(source)) {
+        // Helper (.fn) resources are pasted verbatim by adblock-rust before scriptlet invocations
+        // and may declare classes (e.g. `class JSONPath`) or async functions (`async function ...`).
+        // Wrapping them hides their declared identifier from dependent scriptlets.
+        const source = isHelper
+            ? entry.fn.toString().trim()
+            : normalizeFunctionSource(entry.fn, entry.name);
+        if (!isHelper && !FUNCTION_DECL_RE.test(source)) {
             throw new Error(`Failed to normalize function declaration for ${entry.name}`);
         }
 

@@ -30,6 +30,14 @@ export const builtinScriptlets = [
         fn: function safeSelf() { return scriptletGlobals; },
     },
     {
+        name: "jsonpath.fn",
+        fn: class JSONPath { static create(q) { return q; } },
+    },
+    {
+        name: "edit-element-object.fn",
+        fn: async function editElementObjectFn(x) { return x; },
+    },
+    {
         name: "set-constant.js",
         aliases: ["set.js", "set"],
         dependencies: ["safe-self.fn"],
@@ -77,9 +85,13 @@ export default new Map([
     const resources = JSON.parse(fs.readFileSync(outPath, "utf8"));
     const byName = new Map(resources.map((r) => [r.name, r]));
 
-    // Helper uses fn/javascript
+    // Helper uses fn/javascript and MUST preserve class / async function declarations verbatim
     assert.deepEqual(byName.get("safe-self.fn").kind, { mime: "fn/javascript" });
     assert.equal(byName.get("safe-self.fn").permission, 0);
+    const jsonpathSrc = Buffer.from(byName.get("jsonpath.fn").content, "base64").toString("utf8");
+    assert.match(jsonpathSrc, /^class\s+JSONPath\b/, "class .fn helper must not be wrapped");
+    const asyncHelperSrc = Buffer.from(byName.get("edit-element-object.fn").content, "base64").toString("utf8");
+    assert.match(asyncHelperSrc, /^async\s+function\s+editElementObjectFn\b/, "async function .fn helper must not be wrapped");
 
     // Scriptlet with alias + dependency
     const setConst = byName.get("set-constant.js");
