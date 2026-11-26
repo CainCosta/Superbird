@@ -430,3 +430,33 @@ jobs:
           name: Superbird-Linux-x86_64
           path: packages/Superbird-Linux-x86_64.tar.xz
           if-no-files-found: error
+
+  release:
+    name: Publish release assets
+    needs: [build-macos, build-linux]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download macOS bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: Superbird-macOS-arm64
+          path: assets
+
+      - name: Download Linux bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: Superbird-Linux-x86_64
+          path: assets
+
+      - name: Attach bundles to the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ls -lh assets
+          # The release is created with its notes before the tag build finishes, so this only
+          # uploads assets; it never touches notes, title, or the prerelease flag.
+          gh release upload "${{ github.ref_name }}" assets/* --clobber
