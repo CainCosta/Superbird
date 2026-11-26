@@ -1,0 +1,480 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 18:54:25 -0600
+Subject: [PATCH] LibWebView: wire Superbird uBO-compatible lists, expiry,
+ bundle, and mode switch
+
+
+diff --git a/Base/res/ladybird/about-pages/welcome.js b/Base/res/ladybird/about-pages/welcome.js
+index 5d36dc4b..c3fafd3c 100644
+--- a/Base/res/ladybird/about-pages/welcome.js
++++ b/Base/res/ladybird/about-pages/welcome.js
+@@ -179,7 +179,17 @@ enableContentBlocking.addEventListener("change", () => {
+ 
+     // Enable the lists before the content blocker, which then downloads every enabled list.
+     if (enableContentBlocking.checked) {
+-        for (const identifier of ["easyList", "easyPrivacy"])
++        for (const identifier of [
++            "easyList",
++            "easyPrivacy",
++            "uboFilters",
++            "uboBadware",
++            "uboPrivacy",
++            "uboUnbreak",
++            "uboQuickFixes",
++            "peterLowe",
++            "urlhaus",
++        ])
+             ladybird.sendMessage("setContentBlockerListEnabled", { identifier, enabled: true });
+     }
+ 
+diff --git a/Libraries/LibWebView/Application.cpp b/Libraries/LibWebView/Application.cpp
+index 72ac501a..4de681f6 100644
+--- a/Libraries/LibWebView/Application.cpp
++++ b/Libraries/LibWebView/Application.cpp
+@@ -71,6 +71,7 @@
+ #include <LibWebView/SiteCompatibility.h>
+ #include <LibWebView/SpellChecker.h>
+ #include <LibWebView/StorageAreaRegistry.h>
++#include <LibWebView/SuperbirdContentBlocking.h>
+ #include <LibWebView/SystemProbeClient.h>
+ #include <LibWebView/TabDiscarder.h>
+ #include <LibWebView/TabPerformanceMonitor.h>
+@@ -163,6 +164,11 @@ struct ApplicationSettingsObserver final : public SettingsObserver {
+         Application::the().content_blocker_settings_changed({});
+     }
+ 
++    virtual void superbird_settings_changed() override
++    {
++        Application::the().superbird_settings_changed({});
++    }
++
+     virtual void permission_settings_changed(Web::Permissions::PermissionName) override
+     {
+         Application::the().permission_settings_changed({});
+@@ -710,6 +716,7 @@ ErrorOr<void> Application::initialize(Main::Arguments const& arguments)
+     m_web_content_options.cache_path = profile().paths().cache;
+ 
+     m_content_blocker_lists_directory = LexicalPath::join(profile().paths().data, "ContentBlocking/Lists"sv).string();
++    m_content_blocker_resources_directory = LexicalPath::join(profile().paths().data, "ContentBlocking/Resources"sv).string();
+     rebuild_content_blocker_list_paths();
+ 
+     if (!m_settings->first_run_complete() && !m_browser_options.headless_mode.has_value()
+@@ -758,11 +765,14 @@ ErrorOr<void> Application::initialize(Main::Arguments const& arguments)
+     TRY(launch_services());
+ 
+     if (m_browser_options.enable_content_blocker == EnableContentBlocker::Yes) {
+-        m_content_blocker_list_update_timer = Core::Timer::create_repeating(AK::Duration::from_seconds(24 * 60 * 60), [this] {
+-            start_content_blocker_list_update(ContentBlockerListUpdateTrigger::Automatic);
+-        });
++        m_content_blocker_list_update_timer = Core::Timer::create_repeating(
++            AK::Duration::from_seconds(SuperbirdContentBlocking::update_check_interval_seconds),
++            [this] {
++                start_content_blocker_list_update(ContentBlockerListUpdateTrigger::Automatic);
++            });
+         m_content_blocker_list_update_timer->start();
+-        start_content_blocker_list_update(ContentBlockerListUpdateTrigger::Automatic);
++        if (!m_browser_options.headless_mode.has_value() && !m_browser_options.webdriver_browser_endpoint.has_value())
++            start_content_blocker_list_update(ContentBlockerListUpdateTrigger::Automatic);
+     }
+ 
+ #if defined(LADYBIRD_HAS_UPDATE_CHECK)
+@@ -874,6 +884,11 @@ ByteString Application::content_blocker_list_path(StringView identifier) const
+     return LexicalPath::join(m_content_blocker_lists_directory, ByteString::formatted("{}.txt", identifier)).string();
+ }
+ 
++ByteString Application::content_blocker_resources_path() const
++{
++    return LexicalPath::join(m_content_blocker_resources_directory, "ubo-resources.json"sv).string();
++}
++
+ Optional<UnixDateTime> Application::content_blocker_list_last_updated_at(StringView identifier) const
+ {
+     if (auto file_status = Core::File::stat(content_blocker_list_path(identifier)); !file_status.is_error())
+@@ -885,7 +900,10 @@ void Application::rebuild_content_blocker_list_paths()
+ {
+     m_browser_options.content_blocker_list_paths = m_explicit_content_blocker_list_paths;
+ 
++    bool ubo_mode = SuperbirdContentBlocking::is_ubo_mode_enabled(*m_settings);
+     for (auto const& list : m_settings->content_blocker_lists()) {
++        if (!ubo_mode && SuperbirdContentBlocking::is_ubo_only_list_identifier(list.identifier))
++            continue;
+         auto path = content_blocker_list_path(list.identifier);
+         if (list.enabled && FileSystem::is_regular_file(path))
+             m_browser_options.content_blocker_list_paths.append(move(path));
+@@ -895,40 +913,81 @@ void Application::rebuild_content_blocker_list_paths()
+ ErrorOr<bool> Application::load_content_blocker_lists()
+ {
+     auto custom_filters = m_settings->custom_content_blocker_filters();
+-    if (m_browser_options.content_blocker_list_paths.is_empty() && custom_filters.is_empty()) {
++    bool ubo_mode = SuperbirdContentBlocking::is_ubo_mode_enabled(*m_settings);
++
++    Vector<SuperbirdContentBlocking::BundleInputList> input_lists;
++
++    auto append_list_from_file = [&](String id, ByteString const& path, bool trusted) {
++        auto file_or_error = Core::File::open(path, Core::File::OpenMode::Read);
++        if (file_or_error.is_error()) {
++            warnln("Unable to open content blocker list {}: {}", path, file_or_error.error());
++            return;
++        }
++        auto size_or_error = file_or_error.value()->size();
++        if (size_or_error.is_error() || size_or_error.value() > maximum_content_blocker_list_size) {
++            warnln("Skipping content blocker list {} (invalid or oversized)", path);
++            return;
++        }
++        auto contents_or_error = file_or_error.value()->read_until_eof();
++        if (contents_or_error.is_error()) {
++            warnln("Unable to read content blocker list {}: {}", path, contents_or_error.error());
++            return;
++        }
++        input_lists.append({
++            .id = move(id),
++            .trusted = trusted,
++            .is_hosts_format = false,
++            .contents = contents_or_error.release_value(),
++        });
++    };
++
++    for (size_t i = 0; i < m_explicit_content_blocker_list_paths.size(); ++i)
++        append_list_from_file(MUST(String::formatted("explicit-{}", i)), m_explicit_content_blocker_list_paths[i], false);
++
++    for (auto const& list : m_settings->content_blocker_lists()) {
++        if (!list.enabled)
++            continue;
++        if (!ubo_mode && SuperbirdContentBlocking::is_ubo_only_list_identifier(list.identifier))
++            continue;
++        auto path = content_blocker_list_path(list.identifier);
++        if (!FileSystem::is_regular_file(path))
++            continue;
++        append_list_from_file(list.identifier, path, SuperbirdContentBlocking::is_trusted_list_identifier(list.identifier));
++    }
++
++    ByteBuffer resources_json;
++    if (ubo_mode) {
++        auto resources_path = content_blocker_resources_path();
++        if (FileSystem::is_regular_file(resources_path)) {
++            if (auto file_or_error = Core::File::open(resources_path, Core::File::OpenMode::Read); !file_or_error.is_error()) {
++                auto size_or_error = file_or_error.value()->size();
++                if (!size_or_error.is_error() && size_or_error.value() <= maximum_content_blocker_list_size) {
++                    if (auto contents = file_or_error.value()->read_until_eof(); !contents.is_error())
++                        resources_json = contents.release_value();
++                }
++            }
++        }
++    }
++
++    auto bundle = TRY(SuperbirdContentBlocking::build_bundle(
++        ubo_mode,
++        input_lists.span(),
++        custom_filters,
++        SuperbirdContentBlocking::trust_custom_filters_enabled(*m_settings),
++        resources_json.bytes()));
++
++    if (bundle.is_empty()) {
+         if (m_content_blocker_list_buffer.has_value() && m_content_blocker_list_buffer->size() == 0)
+             return false;
+         m_content_blocker_list_buffer = TRY(Core::AnonymousBuffer::create_with_size(0));
+         return true;
+     }
+ 
+-    Checked<size_t> total_size = 0;
+-    for (auto const& path : m_browser_options.content_blocker_list_paths) {
+-        auto file = TRY(Core::File::open(path, Core::File::OpenMode::Read));
+-        total_size += TRY(file->size());
+-        total_size += 1;
+-    }
+-    total_size += custom_filters.bytes().size();
+-    total_size += 1;
+-
+-    if (total_size.has_overflow() || total_size.value() > maximum_combined_content_blocker_list_size)
++    if (bundle.size() > maximum_combined_content_blocker_list_size)
+         return Error::from_string_literal("Content blocker lists are too large");
+ 
+-    auto blocker_list_buffer = TRY(Core::AnonymousBuffer::create_with_size(total_size.value()));
+-    auto bytes = Bytes { blocker_list_buffer.data<u8>(), blocker_list_buffer.size() };
+-    size_t offset = 0;
+-
+-    for (auto const& path : m_browser_options.content_blocker_list_paths) {
+-        auto file = TRY(Core::File::open(path, Core::File::OpenMode::Read));
+-        auto file_size = TRY(file->size());
+-        TRY(file->read_until_filled(bytes.slice(offset, file_size)));
+-        offset += file_size;
+-        bytes[offset++] = '\n';
+-    }
+-    custom_filters.bytes().copy_to(bytes.slice(offset));
+-    offset += custom_filters.bytes().size();
+-    bytes[offset++] = '\n';
+-    VERIFY(offset == bytes.size());
++    auto blocker_list_buffer = TRY(Core::AnonymousBuffer::create_with_size(bundle.size()));
++    bundle.bytes().copy_to({ blocker_list_buffer.data<u8>(), blocker_list_buffer.size() });
+ 
+     if (m_content_blocker_list_buffer.has_value() && m_content_blocker_list_buffer->bytes() == blocker_list_buffer.bytes())
+         return false;
+@@ -944,17 +1003,50 @@ void Application::start_content_blocker_list_update(ContentBlockerListUpdateTrig
+     if (content_blocker_list_update_in_progress() && !requested_identifier.has_value())
+         return;
+ 
++    bool ubo_mode = SuperbirdContentBlocking::is_ubo_mode_enabled(*m_settings);
+     for (auto const& list : m_settings->content_blocker_lists()) {
+         if (!list.enabled || !list.url.has_value() || (requested_identifier.has_value() && list.identifier != *requested_identifier))
+             continue;
++        if (trigger == ContentBlockerListUpdateTrigger::Automatic && !ubo_mode && SuperbirdContentBlocking::is_ubo_only_list_identifier(list.identifier))
++            continue;
+         if (m_active_content_blocker_list_update.has_value() && m_active_content_blocker_list_update->identifier == list.identifier)
+             continue;
+         if (any_of(m_pending_content_blocker_list_updates, [&](auto const& update) { return update.identifier == list.identifier; }))
+             continue;
++        auto path = content_blocker_list_path(list.identifier);
+         auto updated_at = content_blocker_list_last_updated_at(list.identifier);
+-        if (trigger == ContentBlockerListUpdateTrigger::Automatic && updated_at.has_value() && UnixDateTime::now() - *updated_at < AK::Duration::from_seconds(24 * 60 * 60))
++        auto expiry = AK::Duration::from_seconds(SuperbirdContentBlocking::list_expiry_seconds_for_file(path, list.identifier));
++        if (trigger == ContentBlockerListUpdateTrigger::Automatic && updated_at.has_value() && UnixDateTime::now() - *updated_at < expiry)
+             continue;
+-        m_pending_content_blocker_list_updates.append({ list.identifier, list.name, *list.url, content_blocker_list_path(list.identifier), trigger });
++        m_pending_content_blocker_list_updates.append({ list.identifier, list.name, *list.url, move(path), trigger });
++    }
++
++    if (ubo_mode && (!requested_identifier.has_value() || *requested_identifier == SuperbirdContentBlocking::resources_update_identifier)) {
++        if (auto resources_url = SuperbirdContentBlocking::ubo_resources_url(); resources_url.has_value()) {
++            bool already_active = m_active_content_blocker_list_update.has_value()
++                && m_active_content_blocker_list_update->identifier == SuperbirdContentBlocking::resources_update_identifier;
++            bool already_pending = any_of(m_pending_content_blocker_list_updates, [&](auto const& update) {
++                return update.identifier == SuperbirdContentBlocking::resources_update_identifier;
++            });
++            if (!already_active && !already_pending) {
++                auto resources_path = content_blocker_resources_path();
++                Optional<UnixDateTime> updated_at;
++                if (auto file_status = Core::File::stat(resources_path); !file_status.is_error())
++                    updated_at = UnixDateTime::from_seconds_since_epoch(file_status.value().st_mtime);
++                bool stale_or_missing = !updated_at.has_value()
++                    || trigger == ContentBlockerListUpdateTrigger::UserInitiated
++                    || UnixDateTime::now() - *updated_at >= AK::Duration::from_seconds(SuperbirdContentBlocking::resources_expiry_seconds);
++                if (stale_or_missing) {
++                    m_pending_content_blocker_list_updates.append({
++                        MUST(String::from_utf8(SuperbirdContentBlocking::resources_update_identifier)),
++                        "uBO-compatible scriptlet resources"_string,
++                        *resources_url,
++                        move(resources_path),
++                        trigger,
++                    });
++                }
++            }
++        }
+     }
+ 
+     if (!m_active_content_blocker_list_update.has_value())
+@@ -964,6 +1056,8 @@ void Application::start_content_blocker_list_update(ContentBlockerListUpdateTrig
+ void Application::start_next_content_blocker_list_update()
+ {
+     m_pending_content_blocker_list_updates.remove_all_matching([&](auto const& update) {
++        if (update.identifier == SuperbirdContentBlocking::resources_update_identifier)
++            return !SuperbirdContentBlocking::is_ubo_mode_enabled(*m_settings);
+         auto list = m_settings->content_blocker_list(update.identifier);
+         return !list.has_value() || !list->enabled;
+     });
+@@ -1097,7 +1191,7 @@ void Application::finish_current_content_blocker_list_update()
+ 
+ ErrorOr<void> Application::save_content_blocker_list(ByteString const& path, ReadonlyBytes contents)
+ {
+-    TRY(Core::Directory::create(m_content_blocker_lists_directory, Core::Directory::CreateDirectories::Yes));
++    TRY(Core::Directory::create(LexicalPath::dirname(path), Core::Directory::CreateDirectories::Yes));
+     auto temporary_path = ByteString::formatted("{}.tmp", path);
+     {
+         auto file = TRY(Core::File::open(temporary_path, Core::File::OpenMode::Write));
+@@ -3256,6 +3350,17 @@ void Application::content_blocker_settings_changed(Badge<ApplicationSettingsObse
+     apply_content_blocker_settings();
+ }
+ 
++void Application::superbird_settings_changed(Badge<ApplicationSettingsObserver>)
++{
++    apply_content_blocker_settings();
++    if (m_browser_options.enable_content_blocker == EnableContentBlocker::Yes
++        && !m_browser_options.headless_mode.has_value()
++        && !m_browser_options.webdriver_browser_endpoint.has_value()
++        && SuperbirdContentBlocking::is_ubo_mode_enabled(*m_settings)) {
++        start_content_blocker_list_update(ContentBlockerListUpdateTrigger::Automatic);
++    }
++}
++
+ void Application::apply_content_blocker_settings()
+ {
+     rebuild_content_blocker_list_paths();
+diff --git a/Libraries/LibWebView/Application.h b/Libraries/LibWebView/Application.h
+index c405b534..7a452078 100644
+--- a/Libraries/LibWebView/Application.h
++++ b/Libraries/LibWebView/Application.h
+@@ -203,6 +203,7 @@ public:
+     bool has_content_blocking_rules() const;
+     void apply_content_blocking_policy(WebContentPage&);
+     void content_blocker_settings_changed(Badge<ApplicationSettingsObserver>);
++    void superbird_settings_changed(Badge<ApplicationSettingsObserver>);
+ 
+     bool content_blocker_list_update_in_progress() const;
+     void update_content_blocker_lists(Badge<SettingsUI>);
+@@ -659,6 +660,8 @@ private:
+     };
+     Vector<ByteString> m_explicit_content_blocker_list_paths;
+     ByteString m_content_blocker_lists_directory;
++    ByteString m_content_blocker_resources_directory;
++    ByteString content_blocker_resources_path() const;
+     Vector<PendingContentBlockerListUpdate> m_pending_content_blocker_list_updates;
+     Optional<PendingContentBlockerListUpdate> m_active_content_blocker_list_update;
+     ByteBuffer m_content_blocker_list_update_payload;
+diff --git a/Libraries/LibWebView/CMakeLists.txt b/Libraries/LibWebView/CMakeLists.txt
+index 008e7d92..a7ec47e6 100644
+--- a/Libraries/LibWebView/CMakeLists.txt
++++ b/Libraries/LibWebView/CMakeLists.txt
+@@ -79,6 +79,7 @@ set(SOURCES
+     SiteCompatibility.cpp
+     StorageAreaRegistry.cpp
+     StorageJar.cpp
++    SuperbirdContentBlocking.cpp
+     SystemProbeClient.cpp
+     TestSpellChecker.cpp
+     TestTranslator.cpp
+diff --git a/Libraries/LibWebView/Settings.cpp b/Libraries/LibWebView/Settings.cpp
+index 834d97fb..422ca26c 100644
+--- a/Libraries/LibWebView/Settings.cpp
++++ b/Libraries/LibWebView/Settings.cpp
+@@ -21,6 +21,7 @@
+ #include <LibWebCommon/Loader/UserAgent.h>
+ #include <LibWebView/Application.h>
+ #include <LibWebView/Settings.h>
++#include <LibWebView/SuperbirdContentBlocking.h>
+ #include <LibWebView/Utilities.h>
+ 
+ namespace WebView {
+@@ -874,6 +875,7 @@ void Settings::reset_to_defaults()
+     add_list("listeFR"sv, "Liste FR"sv, "Blocks advertising on French websites."sv, "https://easylist-downloads.adblockplus.org/liste_fr.txt"sv, ListCategory::Language);
+     add_list("roList"sv, "ROList"sv, "Blocks advertising on Romanian websites."sv, "https://zoso.ro/pages/rolist.txt"sv, ListCategory::Language);
+     add_list("ruAdList"sv, "RU AdList"sv, "Blocks advertising on Russian and Ukrainian websites."sv, "https://easylist-downloads.adblockplus.org/ruadlist.txt"sv, ListCategory::Language);
++    SuperbirdContentBlocking::register_default_lists(m_content_blocker_lists);
+ }
+ 
+ JsonValue Settings::serialize_json() const
+diff --git a/Libraries/LibWebView/Settings.h b/Libraries/LibWebView/Settings.h
+index ba054c0b..411fdc83 100644
+--- a/Libraries/LibWebView/Settings.h
++++ b/Libraries/LibWebView/Settings.h
+@@ -276,11 +276,11 @@ struct WEBVIEW_API SettingsData {
+     CrashReportSending m_crash_report_sending { CrashReportSending::AskMe };
+ 
+     bool m_background_networking_enabled { true };
+-    bool m_filter_list_updates_enabled { false };
++    bool m_filter_list_updates_enabled { true };
+ #if defined(LADYBIRD_HAS_UPDATE_CHECK)
+     bool m_update_checks_enabled { true };
+ #endif
+-    bool m_content_blocker_enabled { false };
++    bool m_content_blocker_enabled { true };
+     HashTable<String> m_content_blocker_disabled_sites;
+     Vector<ContentBlockerList> m_content_blocker_lists;
+     String m_custom_content_blocker_filters;
+diff --git a/Tests/LibWebView/TestBackgroundNetworking.cpp b/Tests/LibWebView/TestBackgroundNetworking.cpp
+index 94bf41e9..c80e7584 100644
+--- a/Tests/LibWebView/TestBackgroundNetworking.cpp
++++ b/Tests/LibWebView/TestBackgroundNetworking.cpp
+@@ -12,6 +12,7 @@
+ #include <LibTest/TestCase.h>
+ #include <LibURL/Parser.h>
+ #include <LibWebView/Settings.h>
++#include <LibWebView/SuperbirdContentBlocking.h>
+ 
+ static ByteString settings_path()
+ {
+@@ -35,11 +36,11 @@ TEST_CASE(content_blocker_list_registry)
+     remove_settings_file();
+     auto settings = WebView::Settings::create(settings_path());
+     auto const& definitions = settings.content_blocker_lists();
+-    EXPECT_EQ(definitions.size(), 27u);
++    EXPECT_EQ(definitions.size(), 34u);
+ 
+     for (size_t i = 0; i < definitions.size(); ++i) {
+         auto const& definition = definitions[i];
+-        EXPECT(!definition.enabled);
++        EXPECT_EQ(definition.enabled, WebView::SuperbirdContentBlocking::is_default_enabled_list_identifier(definition.identifier));
+         EXPECT(!definition.identifier.is_empty());
+         EXPECT(!definition.name.is_empty());
+         EXPECT(!definition.description.is_empty());
+@@ -57,6 +58,9 @@ TEST_CASE(feature_policy)
+     remove_settings_file();
+     auto settings = WebView::Settings::create(settings_path());
+ 
++    EXPECT(settings.automatic_filter_list_updates_allowed());
++
++    settings.set_filter_list_updates_enabled(false);
+     EXPECT(!settings.automatic_filter_list_updates_allowed());
+ 
+     settings.set_filter_list_updates_enabled(true);
+@@ -74,6 +78,32 @@ TEST_CASE(feature_policy)
+     remove_settings_file();
+ }
+ 
++TEST_CASE(superbird_content_blocking_mode_switch_and_trust_defaults)
++{
++    remove_settings_file();
++    auto settings = WebView::Settings::create(settings_path());
++
++    EXPECT(settings.content_blocker_enabled());
++    EXPECT(WebView::SuperbirdContentBlocking::is_ubo_mode_enabled(settings));
++    EXPECT(!WebView::SuperbirdContentBlocking::trust_custom_filters_enabled(settings));
++    EXPECT(!WebView::SuperbirdContentBlocking::logger_enabled(settings));
++
++    settings.set_superbird_module_option("content_blocking"_string, "engine_mode"_string, "default"_string);
++    EXPECT(!WebView::SuperbirdContentBlocking::is_ubo_mode_enabled(settings));
++
++    settings.set_superbird_module_option("content_blocking"_string, "engine_mode"_string, "ubo"_string);
++    EXPECT(WebView::SuperbirdContentBlocking::is_ubo_mode_enabled(settings));
++
++    settings.set_superbird_module_enabled("content_blocking"_string, false);
++    EXPECT(!WebView::SuperbirdContentBlocking::is_ubo_mode_enabled(settings));
++
++    settings.set_superbird_module_enabled("content_blocking"_string, true);
++    settings.set_superbird_module_option("content_blocking"_string, "trust_custom_filters"_string, "true"_string);
++    EXPECT(WebView::SuperbirdContentBlocking::trust_custom_filters_enabled(settings));
++
++    remove_settings_file();
++}
++
+ #if defined(LADYBIRD_HAS_UPDATE_CHECK)
+ TEST_CASE(update_check_policy)
+ {
+@@ -128,8 +158,9 @@ TEST_CASE(content_blocker_list_settings_are_persistent)
+     String local_identifier;
+     {
+         auto settings = WebView::Settings::create(settings_path());
+-        EXPECT(!settings.content_blocker_list("easyList"sv)->enabled);
+-        EXPECT(!settings.content_blocker_list("easyPrivacy"sv)->enabled);
++        EXPECT(settings.content_blocker_list("easyList"sv)->enabled);
++        EXPECT(settings.content_blocker_list("easyPrivacy"sv)->enabled);
++        EXPECT(settings.content_blocker_list("uboFilters"sv)->enabled);
+ 
+         settings.set_content_blocker_list_enabled("easyList"sv, false);
+         settings.set_content_blocker_list_enabled("easyPrivacy"sv, true);
+@@ -143,7 +174,7 @@ TEST_CASE(content_blocker_list_settings_are_persistent)
+     auto settings = WebView::Settings::create(settings_path());
+     EXPECT(!settings.content_blocker_list("easyList"sv)->enabled);
+     EXPECT(settings.content_blocker_list("easyPrivacy"sv)->enabled);
+-    EXPECT_EQ(settings.content_blocker_lists().size(), 27u + 2);
++    EXPECT_EQ(settings.content_blocker_lists().size(), 34u + 2);
+     auto const& subscription = settings.content_blocker_list(subscription_identifier).value();
+     EXPECT_EQ(subscription.url->serialize(), "https://example.com/filters.txt"sv);
+     EXPECT(!subscription.enabled);
+@@ -157,7 +188,7 @@ TEST_CASE(content_blocker_list_settings_are_persistent)
+     EXPECT(!settings.remove_content_blocker_list("unknown"sv));
+     EXPECT(settings.remove_content_blocker_list(subscription_identifier));
+     EXPECT(settings.remove_content_blocker_list(local_identifier));
+-    EXPECT_EQ(settings.content_blocker_lists().size(), 27u);
++    EXPECT_EQ(settings.content_blocker_lists().size(), 34u);
+ 
+     remove_settings_file();
+ }
+@@ -179,7 +210,7 @@ TEST_CASE(content_blocker_list_settings_reject_built_in_identifiers)
+     })"sv);
+ 
+     auto settings = WebView::Settings::create(settings_path());
+-    EXPECT_EQ(settings.content_blocker_lists().size(), 27u + 2);
++    EXPECT_EQ(settings.content_blocker_lists().size(), 34u + 2);
+     EXPECT(settings.content_blocker_list("custom-list"sv).has_value());
+     EXPECT(settings.content_blocker_list("local-list"sv).has_value());
+     EXPECT(settings.content_blocker_list("easyList"sv)->built_in);

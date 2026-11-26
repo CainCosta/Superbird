@@ -1,0 +1,126 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 18:54:25 -0600
+Subject: [PATCH] LibWeb/ContentBlocker: hook Superbird uBO-compatible bundle
+ engine
+
+
+diff --git a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
+index 289f087b..f7dbe92a 100644
+--- a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
++++ b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
+@@ -13,6 +13,8 @@ mod rust_demangle;
+ #[path = "../../../../RustPanic.rs"]
+ mod rust_panic;
+ 
++mod superbird;
++
+ use crate::rust_panic::abort_on_panic;
+ use std::collections::HashMap;
+ use std::collections::HashSet;
+@@ -26,6 +28,7 @@ pub struct ContentBlockerString {
+ pub struct ContentBlockerEngine {
+     engine: adblock::engine::Engine,
+     generic_selector_list_rules: GenericSelectorListRules,
++    is_ubo_mode: bool,
+ }
+ 
+ #[derive(Default)]
+@@ -135,7 +138,11 @@ fn selector_key_from_start(selector: &str) -> Option<SelectorKey> {
+ impl GenericSelectorListRules {
+     fn from_rules(rules: &str) -> Self {
+         let mut selector_list_rules = Self::default();
++        selector_list_rules.add_rules(rules);
++        selector_list_rules
++    }
+ 
++    fn add_rules(&mut self, rules: &str) {
+         for line in rules.lines() {
+             let trimmed_line = line.trim();
+             if trimmed_line.is_empty() || trimmed_line.starts_with('!') || trimmed_line.starts_with('[') {
+@@ -162,10 +169,8 @@ impl GenericSelectorListRules {
+             let Some(selector) = generic_filter.plain_css_selector() else {
+                 continue;
+             };
+-            selector_list_rules.add_selector(selector);
++            self.add_selector(selector);
+         }
+-
+-        selector_list_rules
+     }
+ 
+     fn add_selector(&mut self, selector: &str) {
+@@ -347,6 +352,10 @@ pub extern "C" fn rust_content_blocker_create(rules: ak::Span<'_, u8>) -> *mut C
+             return std::ptr::null_mut();
+         };
+ 
++        if rules.starts_with("!superbird:") {
++            return Box::into_raw(Box::new(superbird::create_engine(rules)));
++        }
++
+         let mut filter_set = adblock::lists::FilterSet::new(false);
+         filter_set.add_filter_list(rules.to_string(), adblock::lists::ParseOptions::default());
+         let engine = adblock::engine::Engine::new_with_filter_set(filter_set);
+@@ -354,11 +363,17 @@ pub extern "C" fn rust_content_blocker_create(rules: ak::Span<'_, u8>) -> *mut C
+         let engine = ContentBlockerEngine {
+             engine,
+             generic_selector_list_rules,
++            is_ubo_mode: false,
+         };
+         Box::into_raw(Box::new(engine))
+     })
+ }
+ 
++#[unsafe(no_mangle)]
++pub extern "C" fn rust_content_blocker_is_ubo_mode(engine: Option<&ContentBlockerEngine>) -> bool {
++    abort_on_panic(|| engine.is_some_and(|engine| engine.is_ubo_mode))
++}
++
+ /// # Safety
+ /// - `engine` must be null or a valid pointer returned by `rust_content_blocker_create`
+ #[unsafe(no_mangle)]
+diff --git a/Libraries/LibWeb/Loader/ContentBlocker.cpp b/Libraries/LibWeb/Loader/ContentBlocker.cpp
+index 6b634caf..48351e35 100644
+--- a/Libraries/LibWeb/Loader/ContentBlocker.cpp
++++ b/Libraries/LibWeb/Loader/ContentBlocker.cpp
+@@ -158,6 +158,7 @@ ErrorOr<void> ContentBlocker::set_rules_from_bytes(ReadonlyBytes rules_bytes)
+         MutexLocker locker(m_mutex);
+         ContentBlocking::FFI::rust_content_blocker_free(m_engine.exchange(nullptr));
+         m_has_cosmetic_rules = false;
++        m_is_ubo_mode = false;
+         return {};
+     }
+ 
+@@ -166,10 +167,12 @@ ErrorOr<void> ContentBlocker::set_rules_from_bytes(ReadonlyBytes rules_bytes)
+         return Error::from_string_literal("Failed to create content blocker");
+ 
+     auto has_cosmetic_rules = rules_contain_cosmetic_rules(rules_bytes);
++    auto is_ubo_mode = ContentBlocking::FFI::rust_content_blocker_is_ubo_mode(engine);
+ 
+     MutexLocker locker(m_mutex);
+     ContentBlocking::FFI::rust_content_blocker_free(m_engine.exchange(engine));
+     m_has_cosmetic_rules = has_cosmetic_rules;
++    m_is_ubo_mode = is_ubo_mode;
+     return {};
+ }
+ 
+diff --git a/Libraries/LibWeb/Loader/ContentBlocker.h b/Libraries/LibWeb/Loader/ContentBlocker.h
+index 630535d0..ee327a67 100644
+--- a/Libraries/LibWeb/Loader/ContentBlocker.h
++++ b/Libraries/LibWeb/Loader/ContentBlocker.h
+@@ -45,6 +45,7 @@ public:
+ 
+     bool has_rules() const { return m_engine.load(AK::MemoryOrder::memory_order_relaxed) != nullptr; }
+     bool has_cosmetic_rules() const { return m_has_cosmetic_rules.load(AK::MemoryOrder::memory_order_relaxed); }
++    bool is_ubo_mode() const { return m_is_ubo_mode.load(AK::MemoryOrder::memory_order_relaxed); }
+ 
+     bool is_filtered(URL::URL const&) const;
+     bool is_filtered(URL::URL const&, URL::URL const& source_url, ResourceType) const;
+@@ -67,6 +68,7 @@ private:
+     // for no rules at all skip the lock.
+     mutable Mutex m_mutex;
+     Atomic<bool> m_has_cosmetic_rules { false };
++    Atomic<bool> m_is_ubo_mode { false };
+     Atomic<void*> m_engine { nullptr };
+ };
+ 

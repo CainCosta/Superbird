@@ -151,3 +151,16 @@ GL_DIR="$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/Glance"
     "$TMP_DIR/ak_stubs.cpp" \
     -o "$TMP_DIR/test_glance"
 "$TMP_DIR/test_glance"
+
+CB_DIR="$ROOT_DIR/overlay/UI/Qt/Superbird/Modules/ContentBlocking"
+"$CXX" "${COMMON_FLAGS[@]}" \
+    "$ROOT_DIR/tests/TestContentBlocking.cpp" \
+    "$CB_DIR/ContentBlockingActions.cpp" \
+    "$ROOT_DIR/overlay/UI/Qt/Superbird/Core/ModuleSettings.cpp" \
+    "$TMP_DIR/ak_stubs.cpp" \
+    -o "$TMP_DIR/test_content_blocking"
+"$TMP_DIR/test_content_blocking"
+
+if [ -f "$ROOT_DIR/upstream/Libraries/LibWeb/ContentBlocker/Rust/src/superbird.rs" ] && command -v cargo >/dev/null 2>&1; then
+    cargo test --manifest-path "$ROOT_DIR/upstream/Libraries/LibWeb/ContentBlocker/Rust/Cargo.toml"
+fi

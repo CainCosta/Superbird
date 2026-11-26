@@ -30,6 +30,9 @@
 #if defined(SUPERBIRD_MODULE_GLANCE)
 #    include <UI/Qt/Superbird/Modules/Glance/GlanceModule.h>
 #endif
+#if defined(SUPERBIRD_MODULE_CONTENT_BLOCKING)
+#    include <UI/Qt/Superbird/Modules/ContentBlocking/ContentBlockingModule.h>
+#endif
 
 #include <QApplication>
 #include <QHash>
@@ -87,6 +90,9 @@ void WindowHost::register_compiled_modules()
 #endif
 #if defined(SUPERBIRD_MODULE_GLANCE)
     register_compiled_module(GlanceModule::module_info(), GlanceModule::register_actions);
+#endif
+#if defined(SUPERBIRD_MODULE_CONTENT_BLOCKING)
+    register_compiled_module(ContentBlockingModule::module_info(), ContentBlockingModule::register_actions);
 #endif
 }
 
@@ -330,6 +336,9 @@ WindowHost::WindowHost(Ladybird::BrowserWindow& window)
 #endif
 #if defined(SUPERBIRD_MODULE_GLANCE)
     m_modules.append(make<GlanceModule>(m_window));
+#endif
+#if defined(SUPERBIRD_MODULE_CONTENT_BLOCKING)
+    m_modules.append(make<ContentBlockingModule>(m_window));
 #endif
 
     ModuleRegistry::the().add_observer(*this);

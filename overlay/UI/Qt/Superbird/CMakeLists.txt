@@ -120,3 +120,13 @@ if (SUPERBIRD_MODULE_GLANCE)
         Superbird/Modules/Glance/GlanceOverlay.h
     )
 endif()
+
+if (SUPERBIRD_MODULE_CONTENT_BLOCKING)
+    target_compile_definitions(ladybird_impl PUBLIC SUPERBIRD_MODULE_CONTENT_BLOCKING=1)
+    target_sources(ladybird_impl PRIVATE
+        Superbird/Modules/ContentBlocking/ContentBlockingActions.cpp
+        Superbird/Modules/ContentBlocking/ContentBlockingActions.h
+        Superbird/Modules/ContentBlocking/ContentBlockingModule.cpp
+        Superbird/Modules/ContentBlocking/ContentBlockingModule.h
+    )
+endif()
