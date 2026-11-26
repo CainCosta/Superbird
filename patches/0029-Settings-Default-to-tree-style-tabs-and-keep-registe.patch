@@ -1,0 +1,116 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 13:10:55 -0600
+Subject: [PATCH] Settings: Default to tree-style tabs and keep registered
+ Superbird modules across resets
+
+
+diff --git a/Base/res/ladybird/about-pages/welcome.html b/Base/res/ladybird/about-pages/welcome.html
+index d8446ef9..a22ff121 100644
+--- a/Base/res/ladybird/about-pages/welcome.html
++++ b/Base/res/ladybird/about-pages/welcome.html
+@@ -58,7 +58,7 @@ SPDX-License-Identifier: BSD-2-Clause
+                     <h2 id="tab-layout-title">Layout</h2>
+                     <div class="tab-options" role="radiogroup" aria-labelledby="tab-layout-title">
+                         <label class="tab-option choice-card">
+-                            <input type="radio" name="tab-layout" value="horizontal" checked />
++                            <input type="radio" name="tab-layout" value="horizontal" />
+                             <span class="tab-preview horizontal-preview" aria-hidden="true">
+                                 <span class="preview-strip"><i class="active"></i><i></i><i></i></span>
+                                 <span class="preview-toolbar"><i></i></span>
+@@ -66,7 +66,7 @@ SPDX-License-Identifier: BSD-2-Clause
+                             <span class="tab-option-label">Tabs on top</span>
+                         </label>
+                         <label class="tab-option choice-card">
+-                            <input type="radio" name="tab-layout" value="vertical" />
++                            <input type="radio" name="tab-layout" value="vertical" checked />
+                             <span class="tab-preview vertical-preview" aria-hidden="true">
+                                 <span class="preview-sidebar"><i></i><i class="active"></i><i></i></span>
+                                 <span class="preview-main"
+diff --git a/Libraries/LibWebView/Settings.h b/Libraries/LibWebView/Settings.h
+index 51cbdf33..da218874 100644
+--- a/Libraries/LibWebView/Settings.h
++++ b/Libraries/LibWebView/Settings.h
+@@ -111,14 +111,14 @@ enum class TreeTabChildPosition : u8 {
+ };
+ 
+ struct TabSettings {
+-    bool vertical_tabs_enabled { false };
++    bool vertical_tabs_enabled { true };
+     bool vertical_tabs_expanded { true };
+     bool vertical_tabs_expand_on_hover { false };
+     VerticalTabsPosition vertical_tabs_position { VerticalTabsPosition::Left };
+     // With vertical tabs, the open sidebar also holds the navigation buttons, the address field and the toolbar's other
+     // buttons, and there is no toolbar row. The sidebar is then always on the left.
+     bool everything_in_sidebar { false };
+-    bool tree_tabs_enabled { false };
++    bool tree_tabs_enabled { true };
+     TreeTabCloseBehavior tree_tabs_close_behavior { TreeTabCloseBehavior::PromoteFirstChild };
+     TreeTabChildPosition tree_tabs_child_position { TreeTabChildPosition::Bottom };
+     bool tree_tabs_auto_collapse_siblings { false };
+@@ -265,7 +265,6 @@ struct WEBVIEW_API SettingsData {
+     ContentSettings m_content_settings;
+     TabSettings m_tab_settings;
+     SuperbirdSettings m_superbird_settings;
+-    Vector<SuperbirdModuleDescriptor> m_superbird_modules;
+     BrowsingBehavior m_browsing_behavior;
+ 
+     SearchEngineSettings m_search_engine_settings;
+@@ -460,6 +459,7 @@ private:
+     ByteString m_settings_path;
+     bool m_dns_override_by_command_line { false };
+ 
++    Vector<SuperbirdModuleDescriptor> m_superbird_modules;
+     Vector<SettingsObserver&> m_observers;
+ };
+ 
+diff --git a/Tests/LibWebView/TestStartupSettings.cpp b/Tests/LibWebView/TestStartupSettings.cpp
+index 6d9025d0..24871fbd 100644
+--- a/Tests/LibWebView/TestStartupSettings.cpp
++++ b/Tests/LibWebView/TestStartupSettings.cpp
+@@ -66,3 +66,45 @@ TEST_CASE(a_non_boolean_saved_value_leaves_restoring_off)
+     EXPECT(!settings.restore_previous_session());
+     remove_settings_file();
+ }
++
++TEST_CASE(tree_style_tabs_are_enabled_by_default)
++{
++    remove_settings_file();
++
++    auto settings = WebView::Settings::create(settings_path());
++    EXPECT(settings.tab_settings().vertical_tabs_enabled);
++    EXPECT(settings.tab_settings().tree_tabs_enabled);
++    EXPECT(!settings.tab_settings().everything_in_sidebar);
++}
++
++TEST_CASE(tree_style_tabs_can_be_disabled_in_saved_settings)
++{
++    remove_settings_file();
++    write_settings_file(R"({"tabs":{"verticalTabsEnabled":false,"treeTabsEnabled":false}})"sv);
++
++    auto settings = WebView::Settings::create(settings_path());
++    EXPECT(!settings.tab_settings().vertical_tabs_enabled);
++    EXPECT(!settings.tab_settings().tree_tabs_enabled);
++    remove_settings_file();
++}
++
++TEST_CASE(registered_superbird_modules_survive_settings_replacement)
++{
++    remove_settings_file();
++
++    auto settings = WebView::Settings::create(settings_path());
++    settings.register_superbird_module({
++        .id = "tree_tabs"_string,
++        .name = "Tree-Style Tabs"_string,
++        .description = "Nested tabs"_string,
++        .enabled_by_default = true,
++        .settings_schema = "{}"_string,
++    });
++    EXPECT_EQ(settings.superbird_modules().size(), 1u);
++
++    auto json = settings.serialize_json();
++    settings.replace_with_json(json, WebView::Settings::PersistChange::No);
++    EXPECT_EQ(settings.superbird_modules().size(), 1u);
++    EXPECT_EQ(settings.superbird_modules()[0].id, "tree_tabs"_string);
++    EXPECT(settings.superbird_modules()[0].enabled_by_default);
++}
