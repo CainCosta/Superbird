@@ -24,6 +24,7 @@ inline constexpr StringView module_id = "content_blocking"sv;
 inline constexpr StringView option_engine_mode = "engine_mode"sv;
 inline constexpr StringView option_trust_custom_filters = "trust_custom_filters"sv;
 inline constexpr StringView option_enable_logger = "enable_logger"sv;
+inline constexpr StringView option_no_cosmetic_sites = "no_cosmetic_sites"sv;
 inline constexpr StringView resources_update_identifier = "__superbird_ubo_resources"sv;
 
 inline constexpr i64 minimum_expiry_seconds = 60 * 60;
@@ -44,6 +45,9 @@ WEBVIEW_API void register_default_lists(Vector<ContentBlockerList>& lists);
 WEBVIEW_API bool is_ubo_mode_enabled(Settings const&);
 WEBVIEW_API bool trust_custom_filters_enabled(Settings const&);
 WEBVIEW_API bool logger_enabled(Settings const&);
+WEBVIEW_API bool is_cosmetic_filtering_enabled_for_host(Settings const&, StringView host);
+WEBVIEW_API void set_cosmetic_filtering_enabled_for_host(Settings&, StringView host, bool enabled);
+WEBVIEW_API String site_switch_rules(Settings const&);
 WEBVIEW_API bool is_trusted_list_identifier(StringView identifier);
 WEBVIEW_API bool is_ubo_only_list_identifier(StringView identifier);
 WEBVIEW_API bool is_default_enabled_list_identifier(StringView identifier);
@@ -58,6 +62,7 @@ WEBVIEW_API ErrorOr<ByteBuffer> build_bundle(
     ReadonlySpan<BundleInputList> lists,
     StringView custom_filters,
     bool trust_custom_filters,
-    ReadonlyBytes resources_json = {});
+    ReadonlyBytes resources_json = {},
+    StringView site_switches_rules = {});
 
 }

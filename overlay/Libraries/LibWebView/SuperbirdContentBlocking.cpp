@@ -140,6 +140,66 @@ bool logger_enabled(Settings const& settings)
     return module_option_value(settings, option_enable_logger).value_or("false"sv) == "true"sv;
 }
 
+bool is_cosmetic_filtering_enabled_for_host(Settings const& settings, StringView host)
+{
+    if (host.is_empty())
+        return true;
+    auto csv = module_option_value(settings, option_no_cosmetic_sites).value_or(""sv);
+    if (csv.is_empty())
+        return true;
+    auto hosts = ::Superbird::ContentBlockingFormat::parse_host_list({ csv.characters_without_null_termination(), csv.length() });
+    auto target = ::Superbird::ContentBlockingFormat::parse_host_list({ host.characters_without_null_termination(), host.length() });
+    if (target.empty())
+        return true;
+    for (auto const& disabled : hosts) {
+        if (disabled == target.front())
+            return false;
+    }
+    return true;
+}
+
+void set_cosmetic_filtering_enabled_for_host(Settings& settings, StringView host, bool enabled)
+{
+    auto target = ::Superbird::ContentBlockingFormat::parse_host_list({ host.characters_without_null_termination(), host.length() });
+    if (target.empty())
+        return;
+    auto csv = module_option_value(settings, option_no_cosmetic_sites).value_or(""sv);
+    auto hosts = ::Superbird::ContentBlockingFormat::parse_host_list({ csv.characters_without_null_termination(), csv.length() });
+
+    std::vector<std::string> updated;
+    updated.reserve(hosts.size() + 1);
+    bool found = false;
+    for (auto const& existing : hosts) {
+        if (existing == target.front()) {
+            found = true;
+            if (!enabled)
+                updated.push_back(existing);
+        } else {
+            updated.push_back(existing);
+        }
+    }
+    if (!enabled && !found)
+        updated.push_back(target.front());
+
+    auto serialized = ::Superbird::ContentBlockingFormat::serialize_host_list(updated);
+    settings.set_superbird_module_option(
+        MUST(String::from_utf8(module_id)),
+        MUST(String::from_utf8(option_no_cosmetic_sites)),
+        MUST(String::from_utf8(StringView { serialized.data(), serialized.size() })));
+}
+
+String site_switch_rules(Settings const& settings)
+{
+    if (!is_ubo_mode_enabled(settings))
+        return {};
+    auto csv = module_option_value(settings, option_no_cosmetic_sites).value_or(""sv);
+    if (csv.is_empty())
+        return {};
+    auto hosts = ::Superbird::ContentBlockingFormat::parse_host_list({ csv.characters_without_null_termination(), csv.length() });
+    auto rules = ::Superbird::ContentBlockingFormat::build_site_switches_rules(hosts);
+    return MUST(String::from_utf8(StringView { rules.data(), rules.size() }));
+}
+
 bool is_trusted_list_identifier(StringView identifier)
 {
     return ::Superbird::ContentBlockingFormat::is_trusted_list_id({ identifier.characters_without_null_termination(), identifier.length() });
@@ -193,7 +253,8 @@ ErrorOr<ByteBuffer> build_bundle(
     ReadonlySpan<BundleInputList> lists,
     StringView custom_filters,
     bool trust_custom_filters,
-    ReadonlyBytes resources_json)
+    ReadonlyBytes resources_json,
+    StringView site_switches_rules)
 {
     std::vector<::Superbird::ContentBlockingFormat::ListEntry> entries;
     entries.reserve(lists.size());
@@ -212,7 +273,8 @@ ErrorOr<ByteBuffer> build_bundle(
         entries,
         { custom_filters.characters_without_null_termination(), custom_filters.length() },
         trust_custom_filters,
-        { reinterpret_cast<char const*>(resources_json.data()), resources_json.size() });
+        { reinterpret_cast<char const*>(resources_json.data()), resources_json.size() },
+        { site_switches_rules.characters_without_null_termination(), site_switches_rules.length() });
 
     if (out.empty())
         return ByteBuffer {};

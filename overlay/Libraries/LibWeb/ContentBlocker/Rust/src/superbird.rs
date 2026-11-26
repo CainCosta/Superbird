@@ -484,8 +484,24 @@ pub fn create_engine(input: &str) -> ContentBlockerEngine {
     let bundle = parse_bundle(input);
     let mut filter_set = FilterSet::new(false);
     let mut generic_selector_list_rules = GenericSelectorListRules::default();
+    let mut no_cosmetic_hosts = HashSet::new();
 
     for list in &bundle.lists {
+        if list.id == "site-switches" {
+            for raw_line in list.content.lines() {
+                let line = raw_line.trim();
+                if let Some(rest) = line.strip_prefix("@@||")
+                    && let Some((host, opts)) = rest.split_once("^$")
+                    && opts.split(',').any(|o| o.trim() == "elemhide")
+                {
+                    let host = host.trim().to_ascii_lowercase();
+                    if !host.is_empty() {
+                        no_cosmetic_hosts.insert(host);
+                    }
+                }
+            }
+            continue;
+        }
         let permissions = if bundle.is_ubo_mode && list.trusted {
             PermissionMask::from_bits(1)
         } else {
@@ -554,7 +570,48 @@ pub fn create_engine(input: &str) -> ContentBlockerEngine {
         generic_selector_list_rules,
         is_ubo_mode: bundle.is_ubo_mode,
         missing_resources,
+        no_cosmetic_hosts,
     }
+}
+
+fn extract_url_host(url: &str) -> Option<&str> {
+    let after_scheme = url.split_once("://").map(|(_, rest)| rest)?;
+    let authority = after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("");
+    let host_port = authority
+        .rsplit_once('@')
+        .map(|(_, hp)| hp)
+        .unwrap_or(authority);
+    let host = if host_port.starts_with('[') {
+        host_port.split(']').next().map(|h| &h[1..])?
+    } else {
+        host_port.split(':').next()?
+    };
+    if host.is_empty() { None } else { Some(host) }
+}
+
+pub fn is_cosmetic_disabled_for_url(engine: &ContentBlockerEngine, url: &str) -> bool {
+    if !engine.is_ubo_mode || engine.no_cosmetic_hosts.is_empty() {
+        return false;
+    }
+    let Some(host) = extract_url_host(url) else {
+        return false;
+    };
+    let lower = host.to_ascii_lowercase();
+    if engine.no_cosmetic_hosts.contains(&lower) {
+        return true;
+    }
+    // Also match subdomains (e.g. "m.example.com" matches disabled "example.com")
+    let mut tail = lower.as_str();
+    while let Some((_, rest)) = tail.split_once('.') {
+        if engine.no_cosmetic_hosts.contains(rest) {
+            return true;
+        }
+        tail = rest;
+    }
+    false
 }
 
 const PROCEDURAL_COSMETIC_RUNNER_JS: &str = r#"(function(rules) {
@@ -1110,7 +1167,11 @@ pub fn injected_script_for_url(engine: &ContentBlockerEngine, url: &str) -> Stri
         return String::new();
     }
     let cosmetic = engine.engine.url_cosmetic_resources(url);
-    let procedural_values = collect_procedural_filters(&cosmetic);
+    let procedural_values = if is_cosmetic_disabled_for_url(engine, url) {
+        Vec::new()
+    } else {
+        collect_procedural_filters(&cosmetic)
+    };
 
     let has_scriptlets = !cosmetic.injected_script.trim().is_empty();
     let has_procedural = !procedural_values.is_empty();
@@ -1699,5 +1760,31 @@ example.com##:xpath(//div[@data-promo='1'])
         assert!(script.contains("matches-css"));
         assert!(script.contains("xpath"));
         assert!(!script.contains("opacity: 0.5"));
+    }
+
+    #[test]
+    fn site_switch_elemhide_disables_cosmetic_rules_for_host() {
+        let mut bundle = String::from("!superbird:meta version=1 mode=ubo\n");
+        bundle.push_str(&make_bundle_list(
+            "uboFilters",
+            1,
+            "standard",
+            "##.generic-ad\nexample.com##.site-ad\nexample.com##.card:has-text(Ad)\n",
+        ));
+        bundle.push_str(&make_bundle_list(
+            "site-switches",
+            0,
+            "standard",
+            "@@||example.com^$elemhide,generichide\n",
+        ));
+        bundle.push_str("!superbird:end\n");
+
+        let engine = create_engine(&bundle);
+        assert!(is_cosmetic_disabled_for_url(&engine, "https://example.com/"));
+        assert!(is_cosmetic_disabled_for_url(&engine, "https://sub.example.com/page"));
+        assert!(!is_cosmetic_disabled_for_url(&engine, "https://other.test/"));
+        assert!(crate::cosmetic_css_for_url(&engine, "https://example.com/", &["generic-ad"], &[]).is_empty());
+        assert!(injected_script_for_url(&engine, "https://example.com/").is_empty());
+        assert!(crate::cosmetic_css_for_url(&engine, "https://other.test/", &["generic-ad"], &[]).contains(".generic-ad"));
     }
 }

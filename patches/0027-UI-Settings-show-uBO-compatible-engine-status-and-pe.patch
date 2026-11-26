@@ -1,0 +1,249 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 19:20:50 -0600
+Subject: [PATCH] UI+Settings: show uBO-compatible engine status and per-site
+ cosmetic switch
+
+
+diff --git a/Base/res/ladybird/about-pages/settings.html b/Base/res/ladybird/about-pages/settings.html
+index 3c1cbf88..96d42fe3 100644
+--- a/Base/res/ladybird/about-pages/settings.html
++++ b/Base/res/ladybird/about-pages/settings.html
+@@ -1428,6 +1428,12 @@
+                         <label for="enable-content-blocking">Block ads, trackers and more</label>
+                         <input id="enable-content-blocking" type="checkbox" switch />
+                     </div>
++                    <div class="card-group inline-container">
++                        <span id="content-blocker-engine-summary" class="description"></span>
++                        <button id="open-superbird-blocking-settings" class="link-button">
++                            Switch engine in Superbird settings
++                        </button>
++                    </div>
+                     <template id="filter-list-row">
+                         <div class="filter-list-row control-row">
+                             <input type="checkbox" />
+diff --git a/Base/res/ladybird/about-pages/settings/blocking.js b/Base/res/ladybird/about-pages/settings/blocking.js
+index ae5f8682..96e7174d 100644
+--- a/Base/res/ladybird/about-pages/settings/blocking.js
++++ b/Base/res/ladybird/about-pages/settings/blocking.js
+@@ -15,6 +15,8 @@ const customFilters = document.querySelector("#custom-content-blocker-filters");
+ const saveCustomFilters = document.querySelector("#save-custom-content-blocker-filters");
+ const customFiltersStatus = document.querySelector("#custom-content-blocker-filters-status");
+ const enableContentBlocking = document.querySelector("#enable-content-blocking");
++const engineSummary = document.querySelector("#content-blocker-engine-summary");
++const openSuperbirdBlockingSettings = document.querySelector("#open-superbird-blocking-settings");
+ 
+ const maximumCustomFilterSize = 4 * 1024 * 1024;
+ 
+@@ -79,6 +81,16 @@ function createDisabledSiteRow(site) {
+ }
+ 
+ function loadSettings(settings) {
++    if (Object.hasOwn(settings, "superbird") && engineSummary) {
++        const sb = settings.superbird || {};
++        const moduleEnabled = sb.modules?.content_blocking !== false;
++        const mode = sb.options?.content_blocking?.engine_mode ?? "ubo";
++        const uboActive = moduleEnabled && mode !== "default";
++        engineSummary.textContent = uboActive
++            ? "Active engine: uBO-compatible (scriptlets, redirects, procedural hiding)"
++            : "Active engine: Default Ladybird blocker";
++    }
++
+     if (Object.hasOwn(settings, "contentBlockers")) {
+         const contentBlockers = settings.contentBlockers;
+         enableContentBlocking.checked = contentBlockers.enabled;
+@@ -125,6 +137,12 @@ enableContentBlocking.addEventListener("change", () => {
+     ladybird.sendMessage("setContentBlockerEnabled", enableContentBlocking.checked);
+ });
+ 
++if (openSuperbirdBlockingSettings) {
++    openSuperbirdBlockingSettings.addEventListener("click", () => {
++        location.hash = "#superbird";
++    });
++}
++
+ addSubscription.addEventListener("click", () => {
+     subscriptionUrl.value = ensureURLHasScheme(subscriptionUrl.value);
+     if (!subscriptionUrl.reportValidity() || subscriptionUrl.value.length === 0) {
+diff --git a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
+index 71a34f32..68cfbcdf 100644
+--- a/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
++++ b/Libraries/LibWeb/ContentBlocker/Rust/src/lib.rs
+@@ -38,6 +38,7 @@ pub struct ContentBlockerEngine {
+     generic_selector_list_rules: GenericSelectorListRules,
+     is_ubo_mode: bool,
+     missing_resources: std::sync::Arc<std::sync::Mutex<HashSet<String>>>,
++    no_cosmetic_hosts: HashSet<String>,
+ }
+ 
+ #[derive(Default)]
+@@ -284,6 +285,9 @@ impl GenericSelectorListRules {
+ }
+ 
+ fn cosmetic_css_for_url(engine: &ContentBlockerEngine, url: &str, classes: &[&str], ids: &[&str]) -> String {
++    if superbird::is_cosmetic_disabled_for_url(engine, url) {
++        return String::new();
++    }
+     let resources = engine.engine.url_cosmetic_resources(url);
+     let mut selectors = resources.hide_selectors;
+ 
+@@ -340,6 +344,9 @@ fn has_generic_cosmetic_selectors_for_url(
+     classes: &[&str],
+     ids: &[&str],
+ ) -> bool {
++    if superbird::is_cosmetic_disabled_for_url(engine, url) {
++        return false;
++    }
+     let resources = engine.engine.url_cosmetic_resources(url);
+     if resources.generichide {
+         return false;
+@@ -377,6 +384,7 @@ pub extern "C" fn rust_content_blocker_create(rules: ak::Span<'_, u8>) -> *mut C
+             generic_selector_list_rules,
+             is_ubo_mode: false,
+             missing_resources: std::sync::Arc::new(std::sync::Mutex::new(HashSet::new())),
++            no_cosmetic_hosts: HashSet::new(),
+         };
+         Box::into_raw(Box::new(engine))
+     })
+diff --git a/Libraries/LibWebView/Application.cpp b/Libraries/LibWebView/Application.cpp
+index 4de681f6..dec5ef24 100644
+--- a/Libraries/LibWebView/Application.cpp
++++ b/Libraries/LibWebView/Application.cpp
+@@ -969,12 +969,14 @@ ErrorOr<bool> Application::load_content_blocker_lists()
+         }
+     }
+ 
++    auto site_switches = SuperbirdContentBlocking::site_switch_rules(*m_settings);
+     auto bundle = TRY(SuperbirdContentBlocking::build_bundle(
+         ubo_mode,
+         input_lists.span(),
+         custom_filters,
+         SuperbirdContentBlocking::trust_custom_filters_enabled(*m_settings),
+-        resources_json.bytes()));
++        resources_json.bytes(),
++        site_switches));
+ 
+     if (bundle.is_empty()) {
+         if (m_content_blocker_list_buffer.has_value() && m_content_blocker_list_buffer->size() == 0)
+diff --git a/UI/Qt/SiteSettingsPopover.cpp b/UI/Qt/SiteSettingsPopover.cpp
+index 1d83427e..021cbe03 100644
+--- a/UI/Qt/SiteSettingsPopover.cpp
++++ b/UI/Qt/SiteSettingsPopover.cpp
+@@ -4,6 +4,7 @@
+  * SPDX-License-Identifier: BSD-2-Clause
+  */
+ 
++#include <LibWebView/SuperbirdContentBlocking.h>
+ #include <UI/Qt/ChromeStyle.h>
+ #include <UI/Qt/Icon.h>
+ #include <UI/Qt/SiteSettingsPopover.h>
+@@ -247,9 +248,9 @@ SiteSettingsPopover::SiteSettingsPopover(QWidget* parent, WebView::Settings& set
+     blocking_row->setSpacing(10);
+     m_content_blocking_icon = create_icon(*m_site_page);
+     blocking_row->addWidget(m_content_blocking_icon);
+-    auto* blocking_label = new QLabel("Content blocking", m_site_page);
+-    blocking_label->setFixedHeight(ROW_HEIGHT);
+-    blocking_row->addWidget(blocking_label, 1);
++    m_content_blocking_label = new QLabel("Content blocking", m_site_page);
++    m_content_blocking_label->setFixedHeight(ROW_HEIGHT);
++    blocking_row->addWidget(m_content_blocking_label, 1);
+     m_content_blocking_switch = new PopoverSwitch(m_site_page);
+     m_content_blocking_switch->setAccessibleName("Content blocking on this site");
+     QObject::connect(m_content_blocking_switch, &QCheckBox::toggled, this, [this](bool enabled) {
+@@ -259,6 +260,24 @@ SiteSettingsPopover::SiteSettingsPopover(QWidget* parent, WebView::Settings& set
+     blocking_row->addWidget(m_content_blocking_switch);
+     layout->addLayout(blocking_row);
+ 
++    m_cosmetic_filtering_row = new QWidget(m_site_page);
++    auto* cosmetic_row_layout = new QHBoxLayout(m_cosmetic_filtering_row);
++    cosmetic_row_layout->setContentsMargins(10, 0, 10, 0);
++    cosmetic_row_layout->setSpacing(10);
++    cosmetic_row_layout->addSpacing(26);
++    auto* cosmetic_label = new QLabel("Cosmetic filtering", m_cosmetic_filtering_row);
++    cosmetic_label->setFixedHeight(ROW_HEIGHT);
++    cosmetic_row_layout->addWidget(cosmetic_label, 1);
++    m_cosmetic_filtering_switch = new PopoverSwitch(m_cosmetic_filtering_row);
++    m_cosmetic_filtering_switch->setAccessibleName("Cosmetic filtering on this site");
++    QObject::connect(m_cosmetic_filtering_switch, &QCheckBox::toggled, this, [this](bool enabled) {
++        if (!m_host.is_empty())
++            WebView::SuperbirdContentBlocking::set_cosmetic_filtering_enabled_for_host(m_settings, m_host, enabled);
++    });
++    cosmetic_row_layout->addWidget(m_cosmetic_filtering_switch);
++    m_cosmetic_filtering_row->hide();
++    layout->addWidget(m_cosmetic_filtering_row);
++
+     m_blocked_row = new QPushButton(m_site_page);
+     m_blocked_row->setObjectName("LadybirdPopoverRow");
+     m_blocked_row->setAccessibleName("Blocked on this page");
+@@ -291,9 +310,13 @@ SiteSettingsPopover::SiteSettingsPopover(QWidget* parent, WebView::Settings& set
+     m_reset_permissions_link = create_link(*m_site_page, "Reset permissions");
+     QObject::connect(m_reset_permissions_link, &QPushButton::clicked, this, [this] {
+         m_settings.remove_autoplay_site_filter(m_origin);
+-        if (!m_is_private)
++        if (!m_is_private) {
+             m_settings.reset_host_setting(WebView::HostSetting::ForceDark, m_host);
++            if (!m_host.is_empty())
++                WebView::SuperbirdContentBlocking::set_cosmetic_filtering_enabled_for_host(m_settings, m_host, true);
++        }
+         update_autoplay();
++        update_content_blocking_mode();
+         if (on_reset_permissions)
+             on_reset_permissions();
+     });
+@@ -512,11 +535,29 @@ void SiteSettingsPopover::set_permissions(Vector<WebView::SitePermissionRow> con
+     fit_to_page();
+ }
+ 
++void SiteSettingsPopover::update_content_blocking_mode()
++{
++    bool ubo_mode = WebView::SuperbirdContentBlocking::is_ubo_mode_enabled(m_settings);
++    if (m_content_blocking_label)
++        m_content_blocking_label->setText(ubo_mode ? "Content blocking (uBO-compatible)" : "Content blocking (Default)");
++
++    if (m_cosmetic_filtering_row && m_cosmetic_filtering_switch) {
++        bool show_cosmetic = ubo_mode && m_site_content_blocking_enabled && !m_host.is_empty();
++        m_cosmetic_filtering_row->setVisible(show_cosmetic);
++        if (show_cosmetic) {
++            QSignalBlocker blocker(m_cosmetic_filtering_switch);
++            m_cosmetic_filtering_switch->setChecked(WebView::SuperbirdContentBlocking::is_cosmetic_filtering_enabled_for_host(m_settings, m_host));
++        }
++    }
++}
++
+ void SiteSettingsPopover::set_content_blocking(WebView::ContentBlockingSnapshot const& blocking)
+ {
++    m_site_content_blocking_enabled = blocking.enabled();
+     QSignalBlocker blocker(m_content_blocking_switch);
+     m_content_blocking_switch->setChecked(blocking.enabled());
+     m_content_blocking_switch->setEnabled(blocking.can_toggle());
++    update_content_blocking_mode();
+ 
+     // What was blocked is only listed while content blocking is on.
+     auto count = qformatted("{}", blocking.blocked_resources.size());
+diff --git a/UI/Qt/SiteSettingsPopover.h b/UI/Qt/SiteSettingsPopover.h
+index 4b511f1c..16580cb4 100644
+--- a/UI/Qt/SiteSettingsPopover.h
++++ b/UI/Qt/SiteSettingsPopover.h
+@@ -60,8 +60,10 @@ public:
+ private:
+     virtual void content_settings_changed() override;
+     virtual void autoplay_settings_changed() override { update_autoplay(); }
++    virtual void superbird_settings_changed() override { update_content_blocking_mode(); }
+ 
+     void update_autoplay();
++    void update_content_blocking_mode();
+     void update_reset_link();
+     void update_icons();
+     void show_blocked_resources(bool);
+@@ -95,7 +97,11 @@ private:
+     QPushButton* m_autoplay_button { nullptr };
+     QPushButton* m_reset_permissions_link { nullptr };
+     QLabel* m_content_blocking_icon { nullptr };
++    QLabel* m_content_blocking_label { nullptr };
+     PopoverSwitch* m_content_blocking_switch { nullptr };
++    QWidget* m_cosmetic_filtering_row { nullptr };
++    PopoverSwitch* m_cosmetic_filtering_switch { nullptr };
++    bool m_site_content_blocking_enabled { false };
+     QPushButton* m_blocked_row { nullptr };
+     QLabel* m_blocked_row_chevron { nullptr };
+     QToolButton* m_back_button { nullptr };

@@ -172,12 +172,75 @@ inline std::string sanitize_header_id(std::string_view id)
     return out;
 }
 
+inline std::string build_site_switches_rules(std::vector<std::string> const& no_cosmetic_hosts)
+{
+    std::string out;
+    for (auto const& raw_host : no_cosmetic_hosts) {
+        auto host = trim_ascii_whitespace(raw_host);
+        if (host.empty())
+            continue;
+        bool valid = true;
+        for (unsigned char c : host) {
+            if (!(std::isalnum(c) || c == '.' || c == '-' || c == ':' || c == '[' || c == ']')) {
+                valid = false;
+                break;
+            }
+        }
+        if (!valid)
+            continue;
+        out.append("@@||");
+        out.append(host);
+        out.append("^$elemhide,generichide\n");
+    }
+    return out;
+}
+
+inline std::vector<std::string> parse_host_list(std::string_view csv)
+{
+    std::vector<std::string> hosts;
+    size_t pos = 0;
+    while (pos < csv.size()) {
+        size_t comma = csv.find(',', pos);
+        size_t end = comma == std::string_view::npos ? csv.size() : comma;
+        auto token = trim_ascii_whitespace(csv.substr(pos, end - pos));
+        pos = comma == std::string_view::npos ? csv.size() : comma + 1;
+        if (token.empty())
+            continue;
+        std::string lower;
+        lower.reserve(token.size());
+        for (unsigned char c : token)
+            lower.push_back(static_cast<char>(std::tolower(c)));
+        bool duplicate = false;
+        for (auto const& existing : hosts) {
+            if (existing == lower) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate)
+            hosts.push_back(std::move(lower));
+    }
+    return hosts;
+}
+
+inline std::string serialize_host_list(std::vector<std::string> const& hosts)
+{
+    std::string out;
+    for (size_t i = 0; i < hosts.size(); ++i) {
+        if (i > 0)
+            out.push_back(',');
+        out.append(hosts[i]);
+    }
+    return out;
+}
+
 inline std::string build_bundle_string(
     bool ubo_mode,
     std::vector<ListEntry> const& lists,
     std::string_view custom_filters,
     bool trust_custom_filters,
-    std::string_view resources_json = {})
+    std::string_view resources_json = {},
+    std::string_view site_switch_rules = {})
 {
     if (!ubo_mode) {
         std::string out;
@@ -194,7 +257,7 @@ inline std::string build_bundle_string(
         return out;
     }
 
-    if (lists.empty() && custom_filters.empty() && resources_json.empty())
+    if (lists.empty() && custom_filters.empty() && resources_json.empty() && site_switch_rules.empty())
         return {};
 
     std::string out;
@@ -222,6 +285,14 @@ inline std::string build_bundle_string(
         out.append(std::to_string(custom_filters.size()));
         out.push_back('\n');
         out.append(custom_filters);
+        out.push_back('\n');
+    }
+
+    if (!site_switch_rules.empty()) {
+        out.append("!superbird:list id=site-switches trust=0 format=standard bytes=");
+        out.append(std::to_string(site_switch_rules.size()));
+        out.push_back('\n');
+        out.append(site_switch_rules);
         out.push_back('\n');
     }
 

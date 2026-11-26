@@ -89,6 +89,18 @@ void test_bundle_serialization_ubo_and_default_modes()
     // Empty inputs yield empty output in both modes.
     assert(build_bundle_string(true, {}, "", false, "").empty());
     assert(build_bundle_string(false, {}, "", false, "").empty());
+
+    // Per-site cosmetic switch rules
+    auto hosts = parse_host_list("Example.COM, , sub.site.org, example.com");
+    assert(hosts.size() == 2);
+    assert(hosts[0] == "example.com");
+    assert(hosts[1] == "sub.site.org");
+    assert(serialize_host_list(hosts) == "example.com,sub.site.org");
+    auto switches = build_site_switches_rules({ "example.com", "bad host\n##.x" });
+    assert(switches == "@@||example.com^$elemhide,generichide\n");
+    auto bundle_with_switches = build_bundle_string(true, {}, "##.ad", false, "", switches);
+    assert(bundle_with_switches.find("!superbird:list id=site-switches trust=0 format=standard") != std::string::npos);
+    assert(bundle_with_switches.find("@@||example.com^$elemhide,generichide\n") != std::string::npos);
 }
 
 void test_module_info_and_settings_schema()
