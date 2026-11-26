@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Caio <16298860+CainCosta@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 10:54:09 -0600
+Subject: [PATCH] UI/Qt: Let Superbird modules extend editable field context
+ menus
+
+
+diff --git a/UI/Qt/ContextMenus.cpp b/UI/Qt/ContextMenus.cpp
+index 352dfb67..26a060c4 100644
+--- a/UI/Qt/ContextMenus.cpp
++++ b/UI/Qt/ContextMenus.cpp
+@@ -220,6 +220,10 @@ static NonnullRefPtr<Menu> create_page_context_menu(RemoteView& view, ContextMen
+     }
+     menu->add_separator();
+     add_text_edit_actions(*menu, view_id, request.is_editable, request.selected_text.has_value());
++    if (request.is_editable) {
++        menu->add_separator();
++        Superbird::WindowHost::extend_editable_context_menu(view, *menu, view.url());
++    }
+     menu->add_separator();
+     add_search_action(*menu, view_id, request.selected_text);
+     add_copy_link_to_highlight_action(*menu, view, request);
+@@ -256,6 +260,10 @@ static NonnullRefPtr<Menu> create_selected_text_link_context_menu(RemoteView& vi
+     add_open_url_actions(*menu, view, url, {});
+     menu->add_separator();
+     add_text_edit_actions(*menu, view_id, request.is_editable, true);
++    if (request.is_editable) {
++        menu->add_separator();
++        Superbird::WindowHost::extend_editable_context_menu(view, *menu, view.url());
++    }
+     menu->add_separator();
+     add_search_action(*menu, view_id, request.selected_text);
+     add_copy_link_to_highlight_action(*menu, view, request);

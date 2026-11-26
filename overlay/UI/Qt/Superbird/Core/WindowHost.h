@@ -71,6 +71,8 @@ public:
 
     // Lets the modules of the window showing this view add to a link's context menu.
     static void extend_link_context_menu(Ladybird::RemoteView&, Ladybird::Menu&, URL::URL const&);
+    // Lets the modules of the window showing this view add to an editable field's context menu.
+    static void extend_editable_context_menu(Ladybird::RemoteView&, Ladybird::Menu&, URL::URL const&);
 
     explicit WindowHost(Ladybird::BrowserWindow& window);
     virtual ~WindowHost() override;

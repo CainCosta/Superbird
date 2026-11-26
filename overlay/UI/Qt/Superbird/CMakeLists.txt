@@ -130,3 +130,61 @@ if (SUPERBIRD_MODULE_CONTENT_BLOCKING)
         Superbird/Modules/ContentBlocking/ContentBlockingModule.h
     )
 endif()
+
+if (SUPERBIRD_MODULE_PASSWORDS)
+    target_compile_definitions(ladybird_impl PUBLIC SUPERBIRD_MODULE_PASSWORDS=1)
+    find_package(CURL REQUIRED)
+    target_sources(ladybird_impl PRIVATE
+        Superbird/Modules/Passwords/Core/BitwardenCrypto.cpp
+        Superbird/Modules/Passwords/Core/BitwardenCrypto.h
+        Superbird/Modules/Passwords/Core/BitwardenProtocol.cpp
+        Superbird/Modules/Passwords/Core/BitwardenProtocol.h
+        Superbird/Modules/Passwords/Core/CsvTransfer.cpp
+        Superbird/Modules/Passwords/Core/CsvTransfer.h
+        Superbird/Modules/Passwords/Core/LocalVaultCrypto.cpp
+        Superbird/Modules/Passwords/Core/LocalVaultCrypto.h
+        Superbird/Modules/Passwords/Core/OnePasswordParser.cpp
+        Superbird/Modules/Passwords/Core/OnePasswordParser.h
+        Superbird/Modules/Passwords/Core/PasswordGenerator.cpp
+        Superbird/Modules/Passwords/Core/PasswordGenerator.h
+        Superbird/Modules/Passwords/Core/PasswordProvider.h
+        Superbird/Modules/Passwords/Core/PasswordsActions.cpp
+        Superbird/Modules/Passwords/Core/PasswordsActions.h
+        Superbird/Modules/Passwords/Core/Totp.cpp
+        Superbird/Modules/Passwords/Core/Totp.h
+        Superbird/Modules/Passwords/Core/UriMatcher.cpp
+        Superbird/Modules/Passwords/Core/UriMatcher.h
+        Superbird/Modules/Passwords/Keyring/Keyring.h
+        Superbird/Modules/Passwords/PasswordManagerService.cpp
+        Superbird/Modules/Passwords/PasswordManagerService.h
+        Superbird/Modules/Passwords/PasswordsModule.cpp
+        Superbird/Modules/Passwords/PasswordsModule.h
+        Superbird/Modules/Passwords/Providers/BitwardenProvider.cpp
+        Superbird/Modules/Passwords/Providers/BitwardenProvider.h
+        Superbird/Modules/Passwords/Providers/LocalVaultProvider.cpp
+        Superbird/Modules/Passwords/Providers/LocalVaultProvider.h
+        Superbird/Modules/Passwords/Providers/OnePasswordProvider.cpp
+        Superbird/Modules/Passwords/Providers/OnePasswordProvider.h
+        Superbird/Modules/Passwords/Storage/PasswordsStore.cpp
+        Superbird/Modules/Passwords/Storage/PasswordsStore.h
+        Superbird/Modules/Passwords/UI/InlineAutofillPopover.cpp
+        Superbird/Modules/Passwords/UI/InlineAutofillPopover.h
+        Superbird/Modules/Passwords/UI/PasswordPopover.cpp
+        Superbird/Modules/Passwords/UI/PasswordPopover.h
+        Superbird/Modules/Passwords/UI/ProviderSetupDialog.cpp
+        Superbird/Modules/Passwords/UI/ProviderSetupDialog.h
+        Superbird/Modules/Passwords/UI/SaveCredentialBar.cpp
+        Superbird/Modules/Passwords/UI/SaveCredentialBar.h
+    )
+    target_link_libraries(ladybird_impl PRIVATE CURL::libcurl OpenSSL::Crypto)
+    if (APPLE)
+        target_sources(ladybird_impl PRIVATE Superbird/Modules/Passwords/Keyring/KeyringMacOS.mm)
+        set_source_files_properties(
+            Superbird/Modules/Passwords/Keyring/KeyringMacOS.mm
+            PROPERTIES COMPILE_FLAGS "-fobjc-arc"
+        )
+        target_link_libraries(ladybird_impl PRIVATE "-framework Security" "-framework LocalAuthentication")
+    elseif (LINUX AND NOT ANDROID)
+        target_sources(ladybird_impl PRIVATE Superbird/Modules/Passwords/Keyring/KeyringLinux.cpp)
+    endif()
+endif()

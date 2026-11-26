@@ -121,6 +121,8 @@ public:
 
     // Adds items to the context menu of a link in one of this window's tabs (e.g. "Peek in Glance").
     virtual void extend_link_context_menu(Ladybird::Tab&, Ladybird::Menu&, URL::URL const&) { }
+    // Adds items to the context menu of an editable text field in one of this window's tabs (e.g. Passwords autofill).
+    virtual void extend_editable_context_menu(Ladybird::Tab&, Ladybird::Menu&, URL::URL const&) { }
 };
 
 }
