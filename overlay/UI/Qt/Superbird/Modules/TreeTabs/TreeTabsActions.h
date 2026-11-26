@@ -9,12 +9,24 @@
 #include <AK/Array.h>
 #include <AK/StringView.h>
 #include <AK/Types.h>
+#include <UI/Qt/Superbird/Core/Module.h>
 
 namespace Superbird {
 
 class ModuleRegistry;
 
 inline constexpr StringView TREE_TABS_MODULE_ID = "tree_tabs"sv;
+inline constexpr StringView TREE_TABS_AUTO_BRANCH_COLORS_OPTION = "auto_branch_colors"sv;
+
+inline constexpr Array<ModuleOption, 1> TREE_TABS_OPTIONS { {
+    {
+        .id = TREE_TABS_AUTO_BRANCH_COLORS_OPTION,
+        .label = "Automatically color branches"sv,
+        .description = "Color each branch in a fixed repeating order (red, orange, yellow, green, teal, blue, purple, pink). Manual branch colors still override."sv,
+        .kind = ModuleOption::Kind::Switch,
+        .default_value = "false"sv,
+    },
+} };
 
 // The Tree-Style Tabs commands exposed on the Superbird action bus (Command Palette, menus, shortcuts).
 // Kept free of Qt so the table and its registration are unit-testable on their own.

@@ -1,5 +1,6 @@
 const superbirdModulesContainer = document.querySelector("#superbird-modules-list");
 const superbirdTreeTabsOptions = document.querySelector("#superbird-tree-tabs-options");
+const superbirdTreeTabsCardBody = superbirdTreeTabsOptions.querySelector(".card-body");
 const superbirdTreeTabsActive = document.querySelector("#superbird-tree-tabs-active");
 const superbirdTreeTabsCloseBehavior = document.querySelector("#superbird-tree-tabs-close-behavior");
 const superbirdTreeTabsChildPosition = document.querySelector("#superbird-tree-tabs-child-position");
@@ -38,6 +39,9 @@ const syncTreeTabsInlineOptions = () => {
     superbirdTreeTabsCloseBehavior.parentElement.classList.toggle("hidden", !active);
     superbirdTreeTabsChildPosition.parentElement.classList.toggle("hidden", !active);
     superbirdTreeTabsAutoCollapse.parentElement.classList.toggle("hidden", !active);
+    for (const row of superbirdTreeTabsCardBody.querySelectorAll(".superbird-inline-module-option")) {
+        row.classList.toggle("hidden", !active);
+    }
 };
 
 /*
@@ -334,6 +338,7 @@ const renderOption = (moduleInfo, option, container) => {
         row.appendChild(toggle);
     }
     container.appendChild(row);
+    return row;
 };
 
 // Which commands each shortcut is on, so a shortcut given twice can be pointed out. The first command keeps it.
@@ -565,12 +570,24 @@ const renderModuleSettings = () => {
     for (const old of superbirdPanel.querySelectorAll(".superbird-module-settings")) {
         old.remove();
     }
+    for (const old of superbirdTreeTabsCardBody.querySelectorAll(".superbird-inline-module-option")) {
+        old.remove();
+    }
 
     const enabledModules = AVAILABLE_MODULES.filter(isModuleEnabled);
+    const treeTabsActive = !!TAB_SETTINGS.verticalTabsEnabled && !!TAB_SETTINGS.treeTabsEnabled;
 
     for (const moduleInfo of enabledModules) {
         const { options } = moduleSettings(moduleInfo);
         if (options.length === 0) {
+            continue;
+        }
+        if (moduleInfo.id === "tree_tabs") {
+            for (const option of options) {
+                const row = renderOption(moduleInfo, option, superbirdTreeTabsCardBody);
+                row.classList.add("superbird-inline-module-option");
+                row.classList.toggle("hidden", !treeTabsActive);
+            }
             continue;
         }
         const { section, body } = makeSection(moduleInfo.name);

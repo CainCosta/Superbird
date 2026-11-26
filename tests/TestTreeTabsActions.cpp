@@ -138,9 +138,21 @@ static void test_disabling_module_hides_actions()
     EXPECT(registry.matching_actions().is_empty());
 }
 
+static void test_options_default_off()
+{
+    EXPECT(TREE_TABS_OPTIONS.size() == 1);
+    auto const& option = TREE_TABS_OPTIONS[0];
+    EXPECT(option.id == TREE_TABS_AUTO_BRANCH_COLORS_OPTION);
+    EXPECT(!option.label.is_empty());
+    EXPECT(!option.description.is_empty());
+    EXPECT(option.kind == ModuleOption::Kind::Switch);
+    EXPECT(option.default_value == "false"sv);
+}
+
 int main()
 {
     test_action_table_is_well_formed();
+    test_options_default_off();
     test_all_actions_register_on_the_bus();
     test_triggers_route_to_handler();
     test_availability_follows_handler();

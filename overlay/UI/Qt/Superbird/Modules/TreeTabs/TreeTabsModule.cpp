@@ -42,6 +42,7 @@ ModuleInfo TreeTabsModule::module_info()
         .name = "Tree-Style Tabs"sv,
         .description = "Organize vertical sidebar tabs into collapsible parent/child trees with drag-and-drop nesting and branch actions."sv,
         .enabled_by_default = true,
+        .options = TREE_TABS_OPTIONS.span(),
         .shortcuts = SHORTCUTS.span(),
     };
 }
@@ -226,9 +227,13 @@ void TreeTabsModule::attach_tab_context_menu(Ladybird::Tab& tab, QMenu& menu)
     QObject::connect(color_menu, &QMenu::aboutToShow, color_menu, [this, color_menu, tab_ptr = QPointer<Ladybird::Tab>(&tab)] {
         if (!tab_ptr)
             return;
+        auto auto_colors = m_controller->auto_branch_colors_enabled();
         auto current = static_cast<int>(m_controller->branch_color(*tab_ptr));
-        for (auto* action : color_menu->actions())
+        for (auto* action : color_menu->actions()) {
+            if (action->data().toInt() == static_cast<int>(Ladybird::BranchColor::None))
+                action->setText(auto_colors ? QStringLiteral("Automatic") : QStringLiteral("None"));
             action->setChecked(action->data().toInt() == current);
+        }
     });
 
     auto* branch_separator = menu.addSeparator();
