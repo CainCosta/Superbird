@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026-present, the Superbird developers.
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
 const superbirdModulesContainer = document.querySelector("#superbird-modules-list");
 const superbirdTreeTabsOptions = document.querySelector("#superbird-tree-tabs-options");
 const superbirdTreeTabsCardBody = superbirdTreeTabsOptions.querySelector(".card-body");
