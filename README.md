@@ -68,3 +68,7 @@ See [ROADMAP.md](ROADMAP.md) for the full plan and `docs/design/` for design spe
 - Named session snapshots and export
 - Vim mode and keyboard link hints
 - Per-site custom styles (boosts) and command chains
+
+## License
+
+BSD-2-Clause, the same license as the Ladybird fork it builds on. Bundles ship a `LICENSES.txt` covering Ladybird, Superbird, and third-party dependencies. See [LICENSE](LICENSE).
