@@ -10,7 +10,7 @@ base_file="$(git -C "$up" rev-parse --absolute-git-dir 2>/dev/null)/superbird-ba
 if [[ -f "$base_file" ]] && git -C "$up" rev-parse -q --verify superbird >/dev/null; then
     tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
     git -C "$up" format-patch -q --zero-commit --no-signature --no-stat -N -o "$tmp" "$(cat "$base_file")..superbird"
-    if ! diff -q <(cat "$tmp"/*.patch 2>/dev/null | grep -v "^@@") <(cat "$root"/patches/*.patch 2>/dev/null | grep -v "^@@") >/dev/null; then
+    if ! diff -q <(cat "$tmp"/*.patch 2>/dev/null | grep -Ev "^(@@|index )") <(cat "$root"/patches/*.patch 2>/dev/null | grep -Ev "^(@@|index )") >/dev/null; then
         echo "pre-push: upstream/ has commits that differ from patches/." >&2
         echo "  Run ./scripts/export-patches.sh and commit (or push anyway with --no-verify)." >&2
         exit 1

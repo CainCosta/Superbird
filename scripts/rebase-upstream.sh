@@ -395,7 +395,14 @@ cmd_finalize() {
 
     echo "[superbird] Pinning upstream/ submodule to ${new_sha:0:12}..."
     "$ROOT_DIR/scripts/reset-upstream.sh" "$new_sha"
-    git -C "$ROOT_DIR" -c submodule.upstream.ignore=none add upstream
+    # .gitmodules sets ignore = all on upstream/, so update the gitlink entry directly.
+    git -C "$ROOT_DIR" update-index --cacheinfo "160000,${new_sha},upstream"
+    local staged_sha
+    staged_sha="$(git -C "$ROOT_DIR" ls-files --stage upstream | awk '{print $2}')"
+    if [[ "$staged_sha" != "$new_sha" ]]; then
+        echo "Error: failed to stage upstream/ pin at ${new_sha} (got: ${staged_sha:-empty})." >&2
+        exit 1
+    fi
 
     echo "[superbird] Cold re-apply verification onto ${new_sha:0:12}..."
     SUPERBIRD_BASE_SHA="$new_sha" "$ROOT_DIR/scripts/apply.sh"
