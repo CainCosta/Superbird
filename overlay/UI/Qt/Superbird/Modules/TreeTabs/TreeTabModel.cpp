@@ -229,6 +229,7 @@ void TreeTabModel::append_visible_rows(
     size_t depth,
     u32 guide_mask,
     bool is_last_sibling,
+    BranchColor inherited_color,
     Tab const* active_tab,
     Function<bool(Tab const&)> const& has_audio,
     Function<bool(Tab const&)> const& needs_attention,
@@ -240,6 +241,7 @@ void TreeTabModel::append_visible_rows(
 
     bool const has_children = !entry->children.is_empty();
     bool const effective_collapsed = has_children && entry->collapsed;
+    auto const row_color = entry->color != BranchColor::None ? entry->color : inherited_color;
 
     size_t desc_count = 0;
     bool has_active_desc = false;
@@ -262,7 +264,7 @@ void TreeTabModel::append_visible_rows(
         .has_active_descendant = has_active_desc,
         .has_audio_descendant = has_audio_desc,
         .has_attention_descendant = has_attention_desc,
-        .color = effective_branch_color(node_id),
+        .color = row_color,
     });
 
     if (effective_collapsed)
@@ -274,20 +276,25 @@ void TreeTabModel::append_visible_rows(
 
     for (size_t i = 0; i < entry->children.size(); ++i) {
         bool child_is_last = (i + 1 == entry->children.size());
-        append_visible_rows(entry->children[i], depth + 1, child_guide_mask, child_is_last, active_tab, has_audio, needs_attention, out);
+        append_visible_rows(entry->children[i], depth + 1, child_guide_mask, child_is_last, row_color, active_tab, has_audio, needs_attention, out);
     }
 }
 
 Vector<VisibleTreeRow> TreeTabModel::visible_rows(
     Tab const* active_tab,
     Function<bool(Tab const&)> const& has_audio,
-    Function<bool(Tab const&)> const& needs_attention) const
+    Function<bool(Tab const&)> const& needs_attention,
+    Function<bool(Tab const&)> const& is_hidden) const
 {
     Vector<VisibleTreeRow> rows;
     rows.ensure_capacity(m_nodes.size());
+    size_t branch_index = 0;
     for (size_t i = 0; i < m_roots.size(); ++i) {
         bool is_last = (i + 1 == m_roots.size());
-        append_visible_rows(m_roots[i], 0, 0, is_last, active_tab, has_audio, needs_attention, rows);
+        auto root_auto_color = BranchColor::None;
+        if (m_auto_branch_colors && is_visible_branch(m_roots[i], is_hidden))
+            root_auto_color = auto_branch_color_for_index(branch_index++);
+        append_visible_rows(m_roots[i], 0, 0, is_last, root_auto_color, active_tab, has_audio, needs_attention, rows);
     }
     return rows;
 }
@@ -552,11 +559,32 @@ void TreeTabModel::remove_node(TreeNodeId node_id, WebView::TreeTabCloseBehavior
     }
 }
 
+BranchColor auto_branch_color_for_index(size_t index)
+{
+    return AUTO_BRANCH_COLOR_PATTERN[index % AUTO_BRANCH_COLOR_PATTERN.size()];
+}
+
 BranchColor branch_color_from_storage(i64 value)
 {
     if (value <= 0 || value >= BRANCH_COLOR_COUNT)
         return BranchColor::None;
     return static_cast<BranchColor>(value);
+}
+
+bool TreeTabModel::is_visible_branch(TreeNodeId root_id, Function<bool(Tab const&)> const& is_hidden) const
+{
+    auto const* entry = node(root_id);
+    if (!entry || entry->children.is_empty())
+        return false;
+    if (!is_hidden)
+        return true;
+    if (entry->tab && is_hidden(*entry->tab))
+        return false;
+    for (auto child_id : entry->children) {
+        if (auto const* child = node(child_id); child && (!child->tab || !is_hidden(*child->tab)))
+            return true;
+    }
+    return false;
 }
 
 bool TreeTabModel::set_branch_color(TreeNodeId node_id, BranchColor color)
@@ -574,11 +602,24 @@ BranchColor TreeTabModel::branch_color(TreeNodeId node_id) const
     return entry ? entry->color : BranchColor::None;
 }
 
-BranchColor TreeTabModel::effective_branch_color(TreeNodeId node_id) const
+BranchColor TreeTabModel::effective_branch_color(TreeNodeId node_id, Function<bool(Tab const&)> const& is_hidden) const
 {
+    Optional<TreeNodeId> root_id;
     for (auto const* entry = node(node_id); entry; entry = entry->parent_id.has_value() ? node(*entry->parent_id) : nullptr) {
         if (entry->color != BranchColor::None)
             return entry->color;
+        if (!entry->parent_id.has_value())
+            root_id = entry->id;
+    }
+    if (!m_auto_branch_colors || !root_id.has_value() || !is_visible_branch(*root_id, is_hidden))
+        return BranchColor::None;
+
+    size_t branch_index = 0;
+    for (auto candidate : m_roots) {
+        if (candidate == *root_id)
+            return auto_branch_color_for_index(branch_index);
+        if (is_visible_branch(candidate, is_hidden))
+            ++branch_index;
     }
     return BranchColor::None;
 }
@@ -603,12 +644,15 @@ void TreeTabModel::append_filtered_rows(
     size_t depth,
     u32 guide_mask,
     bool is_last_sibling,
+    BranchColor inherited_color,
     HashTable<TreeNodeId> const& included,
     Vector<VisibleTreeRow>& out) const
 {
     auto const* entry = node(node_id);
     if (!entry)
         return;
+
+    auto const row_color = entry->color != BranchColor::None ? entry->color : inherited_color;
 
     Vector<TreeNodeId> shown_children;
     for (auto child : entry->children) {
@@ -629,27 +673,37 @@ void TreeTabModel::append_filtered_rows(
         .has_active_descendant = false,
         .has_audio_descendant = false,
         .has_attention_descendant = false,
-        .color = effective_branch_color(node_id),
+        .color = row_color,
     });
 
     u32 child_guide_mask = guide_mask;
     if (depth < 31 && !is_last_sibling)
         child_guide_mask |= (1u << depth);
     for (size_t i = 0; i < shown_children.size(); ++i)
-        append_filtered_rows(shown_children[i], depth + 1, child_guide_mask, i + 1 == shown_children.size(), included, out);
+        append_filtered_rows(shown_children[i], depth + 1, child_guide_mask, i + 1 == shown_children.size(), row_color, included, out);
 }
 
-Vector<VisibleTreeRow> TreeTabModel::filtered_rows(Function<bool(Tab const&)> const& matches) const
+Vector<VisibleTreeRow> TreeTabModel::filtered_rows(
+    Function<bool(Tab const&)> const& matches,
+    Function<bool(Tab const&)> const& is_hidden) const
 {
     HashTable<TreeNodeId> included;
-    Vector<TreeNodeId> shown_roots;
+    struct ShownRoot {
+        TreeNodeId id;
+        BranchColor auto_color { BranchColor::None };
+    };
+    Vector<ShownRoot> shown_roots;
+    size_t branch_index = 0;
     for (auto root : m_roots) {
+        auto root_auto_color = BranchColor::None;
+        if (m_auto_branch_colors && is_visible_branch(root, is_hidden))
+            root_auto_color = auto_branch_color_for_index(branch_index++);
         if (collect_filter_matches(root, matches, included))
-            shown_roots.append(root);
+            shown_roots.append({ root, root_auto_color });
     }
     Vector<VisibleTreeRow> rows;
     for (size_t i = 0; i < shown_roots.size(); ++i)
-        append_filtered_rows(shown_roots[i], 0, 0, i + 1 == shown_roots.size(), included, rows);
+        append_filtered_rows(shown_roots[i].id, 0, 0, i + 1 == shown_roots.size(), shown_roots[i].auto_color, included, rows);
     return rows;
 }
 

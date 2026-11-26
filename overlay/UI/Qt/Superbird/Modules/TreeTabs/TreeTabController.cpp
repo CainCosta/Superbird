@@ -38,6 +38,8 @@ TreeTabController::TreeTabController(BrowserWindow& window)
     m_persist_timer->setSingleShot(true);
     m_persist_timer->setInterval(150);
     connect(m_persist_timer, &QTimer::timeout, this, &TreeTabController::persist_now);
+
+    m_model.set_auto_branch_colors(auto_branch_colors_enabled());
 }
 
 TreeTabController::~TreeTabController()
@@ -173,6 +175,7 @@ void TreeTabController::on_tab_moved_externally()
 
 void TreeTabController::on_settings_changed()
 {
+    m_model.set_auto_branch_colors(auto_branch_colors_enabled());
     reconcile_model_with_window();
     if (is_enabled())
         sync_flat_tab_order();
@@ -269,21 +272,29 @@ bool TreeTabController::tab_has_audio(Tab const& tab)
 
 Vector<VisibleTreeRow> TreeTabController::visible_rows() const
 {
+    Function<bool(Tab const&)> is_hidden;
+    if (m_is_tab_hidden) {
+        is_hidden = [this](Tab const& tab) { return m_is_tab_hidden(const_cast<Tab&>(tab)); };
+    }
+
     Vector<VisibleTreeRow> rows;
     if (auto query = m_filter_text.trimmed(); !query.isEmpty()) {
         // NB: Qt folds case for every script, so "É" finds "é"; the matcher then compares the folded bytes.
         auto query_utf8 = query.toCaseFolded().toUtf8();
         std::string_view query_view { query_utf8.constData(), static_cast<size_t>(query_utf8.size()) };
-        rows = m_model.filtered_rows([&](Tab const& tab) {
-            auto title = tab.title().toCaseFolded().toUtf8();
-            auto url = QString::fromUtf8(tab.url().to_byte_string().characters()).toCaseFolded().toUtf8();
-            return Superbird::TreeTabs::tab_matches_filter({ title.constData(), static_cast<size_t>(title.size()) }, { url.constData(), static_cast<size_t>(url.size()) }, query_view);
-        });
+        rows = m_model.filtered_rows(
+            [&](Tab const& tab) {
+                auto title = tab.title().toCaseFolded().toUtf8();
+                auto url = QString::fromUtf8(tab.url().to_byte_string().characters()).toCaseFolded().toUtf8();
+                return Superbird::TreeTabs::tab_matches_filter({ title.constData(), static_cast<size_t>(title.size()) }, { url.constData(), static_cast<size_t>(url.size()) }, query_view);
+            },
+            is_hidden);
     } else {
         rows = m_model.visible_rows(
             m_window.current_tab(),
             [](Tab const& tab) { return tab_has_audio(tab); },
-            [](Tab const& tab) { return tab.needs_attention(); });
+            [](Tab const& tab) { return tab.needs_attention(); },
+            is_hidden);
     }
     // Tabs another module keeps out of view (another workspace's) leave the tree too.
     if (m_is_tab_hidden)
@@ -816,6 +827,11 @@ void TreeTabController::focus_filter()
 {
     if (m_view)
         m_view->focus_filter();
+}
+
+bool TreeTabController::auto_branch_colors_enabled() const
+{
+    return Superbird::WindowHost::module_option_is_on(Superbird::TreeTabsModule::MODULE_ID, Superbird::TREE_TABS_AUTO_BRANCH_COLORS_OPTION);
 }
 
 BranchColor TreeTabController::branch_color(Tab const& tab) const

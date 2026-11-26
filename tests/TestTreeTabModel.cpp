@@ -343,6 +343,149 @@ static void test_filter_text_matching()
     EXPECT(tab_matches_filter("Caf\xC3\xA9", "", "caf\xC3\xA9"));
 }
 
+static void test_auto_branch_colors()
+{
+    // Pattern cycles deterministically through the 8 branch colors.
+    EXPECT(auto_branch_color_for_index(0) == BranchColor::Red);
+    EXPECT(auto_branch_color_for_index(1) == BranchColor::Orange);
+    EXPECT(auto_branch_color_for_index(2) == BranchColor::Yellow);
+    EXPECT(auto_branch_color_for_index(3) == BranchColor::Green);
+    EXPECT(auto_branch_color_for_index(4) == BranchColor::Teal);
+    EXPECT(auto_branch_color_for_index(5) == BranchColor::Blue);
+    EXPECT(auto_branch_color_for_index(6) == BranchColor::Purple);
+    EXPECT(auto_branch_color_for_index(7) == BranchColor::Pink);
+    EXPECT(auto_branch_color_for_index(8) == BranchColor::Red);
+    EXPECT(auto_branch_color_for_index(9) == BranchColor::Orange);
+
+    // Off by default.
+    Tab r1(1), c1a(2), c1b(3), g1(4), solo(5), r2(6), c2a(7), r3(8), c3a(9);
+    TreeTabModel model;
+    EXPECT(!model.auto_branch_colors_enabled());
+
+    auto n_r1 = model.add_tab(&r1, 401);
+    auto n_c1a = model.add_tab(&c1a, 402, n_r1);
+    auto n_c1b = model.add_tab(&c1b, 403, n_r1);
+    auto n_g1 = model.add_tab(&g1, 404, n_c1b);
+    auto n_solo = model.add_tab(&solo, 405);
+    auto n_r2 = model.add_tab(&r2, 406);
+    auto n_c2a = model.add_tab(&c2a, 407, n_r2);
+    auto n_r3 = model.add_tab(&r3, 408);
+    auto n_c3a = model.add_tab(&c3a, 409, n_r3);
+
+    EXPECT(model.effective_branch_color(n_r1) == BranchColor::None);
+    EXPECT(model.effective_branch_color(n_g1) == BranchColor::None);
+
+    // Turning auto branch colors on colors every root branch in the predictable sequence;
+    // solo roots stay uncolored and do not consume a slot.
+    model.set_auto_branch_colors(true);
+    EXPECT(model.auto_branch_colors_enabled());
+    EXPECT(model.effective_branch_color(n_r1) == BranchColor::Red);
+    EXPECT(model.effective_branch_color(n_c1a) == BranchColor::Red);
+    EXPECT(model.effective_branch_color(n_c1b) == BranchColor::Red);
+    EXPECT(model.effective_branch_color(n_g1) == BranchColor::Red);
+    EXPECT(model.effective_branch_color(n_solo) == BranchColor::None);
+    EXPECT(model.effective_branch_color(n_r2) == BranchColor::Orange);
+    EXPECT(model.effective_branch_color(n_c2a) == BranchColor::Orange);
+    EXPECT(model.effective_branch_color(n_r3) == BranchColor::Yellow);
+    EXPECT(model.effective_branch_color(n_c3a) == BranchColor::Yellow);
+
+    auto rows = model.visible_rows(nullptr);
+    EXPECT(rows.size() == 9);
+    EXPECT(rows[0].color == BranchColor::Red && rows[3].color == BranchColor::Red);
+    EXPECT(rows[4].color == BranchColor::None); // solo root
+    EXPECT(rows[5].color == BranchColor::Orange && rows[6].color == BranchColor::Orange);
+    EXPECT(rows[7].color == BranchColor::Yellow && rows[8].color == BranchColor::Yellow);
+
+    // Manual override on a branch root wins and does not shift sibling branch slots.
+    EXPECT(model.set_branch_color(n_r2, BranchColor::Purple));
+    EXPECT(model.effective_branch_color(n_r2) == BranchColor::Purple);
+    EXPECT(model.effective_branch_color(n_c2a) == BranchColor::Purple);
+    EXPECT(model.effective_branch_color(n_r3) == BranchColor::Yellow);
+
+    // Manual override on a sub-branch overrides only that subtree.
+    EXPECT(model.set_branch_color(n_c1b, BranchColor::Blue));
+    EXPECT(model.effective_branch_color(n_r1) == BranchColor::Red);
+    EXPECT(model.effective_branch_color(n_c1a) == BranchColor::Red);
+    EXPECT(model.effective_branch_color(n_c1b) == BranchColor::Blue);
+    EXPECT(model.effective_branch_color(n_g1) == BranchColor::Blue);
+
+    // Manual tag on a solo root works without consuming a branch slot.
+    EXPECT(model.set_branch_color(n_solo, BranchColor::Teal));
+    EXPECT(model.effective_branch_color(n_solo) == BranchColor::Teal);
+    EXPECT(model.effective_branch_color(n_r3) == BranchColor::Yellow);
+
+    // Persistence only stores explicit manual overrides, not auto-derived colors.
+    auto snapshot = model.snapshot_persisted_state();
+    HashMap<SessionTabId, BranchColor> persisted_colors;
+    for (auto const& state : snapshot)
+        persisted_colors.set(state.session_tab_id, state.color);
+    EXPECT(persisted_colors.get(401).value() == BranchColor::None);
+    EXPECT(persisted_colors.get(403).value() == BranchColor::Blue);
+    EXPECT(persisted_colors.get(405).value() == BranchColor::Teal);
+    EXPECT(persisted_colors.get(406).value() == BranchColor::Purple);
+    EXPECT(persisted_colors.get(408).value() == BranchColor::None);
+
+    // Quick filter keeps each matched branch's true color even when earlier branches are filtered out.
+    auto filtered = model.filtered_rows([](Tab const& tab) { return tab.id == 9; });
+    EXPECT(filtered.size() == 2);
+    EXPECT(filtered[0].tab->id == 8 && filtered[0].color == BranchColor::Yellow);
+    EXPECT(filtered[1].tab->id == 9 && filtered[1].color == BranchColor::Yellow);
+
+    // Hidden tabs (another workspace) do not shift the active workspace's color sequence.
+    Function<bool(Tab const&)> hide_first_two_branches = [](Tab const& tab) { return tab.id <= 7; };
+    EXPECT(model.effective_branch_color(n_r3, hide_first_two_branches) == BranchColor::Red);
+    EXPECT(model.effective_branch_color(n_c3a, hide_first_two_branches) == BranchColor::Red);
+    auto ws_rows = model.visible_rows(nullptr, {}, {}, hide_first_two_branches);
+    // Visible rows for r3/c3a (at the end of the unfiltered list) carry Red for workspace 2.
+    EXPECT(ws_rows[7].tab->id == 8 && ws_rows[7].color == BranchColor::Red);
+    EXPECT(ws_rows[8].tab->id == 9 && ws_rows[8].color == BranchColor::Red);
+    auto ws_filtered = model.filtered_rows([](Tab const& tab) { return tab.id == 9; }, hide_first_two_branches);
+    EXPECT(ws_filtered.size() == 2 && ws_filtered[0].color == BranchColor::Red && ws_filtered[1].color == BranchColor::Red);
+
+    // Clearing a manual override falls back to the automatic color.
+    EXPECT(model.set_branch_color(n_r2, BranchColor::None));
+    EXPECT(model.effective_branch_color(n_r2) == BranchColor::Orange);
+
+    // Collapsed branches keep their automatic color.
+    EXPECT(model.set_collapsed(n_r3, true));
+    rows = model.visible_rows(nullptr);
+    EXPECT(rows.last().tab->id == 8 && rows.last().collapsed && rows.last().color == BranchColor::Yellow);
+
+    // Closing a branch's last child makes it a solo root again (no auto color).
+    model.remove_node(n_c3a, WebView::TreeTabCloseBehavior::AttachToGrandparent);
+    EXPECT(model.effective_branch_color(n_r3) == BranchColor::None);
+
+    // Turning auto branch colors off clears automatic colors while keeping manual overrides.
+    model.set_auto_branch_colors(false);
+    EXPECT(model.effective_branch_color(n_r1) == BranchColor::None);
+    EXPECT(model.effective_branch_color(n_c1b) == BranchColor::Blue);
+    EXPECT(model.effective_branch_color(n_g1) == BranchColor::Blue);
+    EXPECT(model.effective_branch_color(n_solo) == BranchColor::Teal);
+    EXPECT(model.effective_branch_color(n_r2) == BranchColor::None);
+
+    // Wraparound across more than 8 branches.
+    TreeTabModel many;
+    many.set_auto_branch_colors(true);
+    Vector<Tab> roots;
+    Vector<Tab> children;
+    roots.ensure_capacity(10);
+    children.ensure_capacity(10);
+    for (int i = 0; i < 10; ++i) {
+        roots.append(Tab(100 + i));
+        children.append(Tab(200 + i));
+    }
+    Vector<TreeNodeId> root_ids;
+    for (size_t i = 0; i < 10; ++i) {
+        auto rid = many.add_tab(&roots[i], static_cast<SessionTabId>(100 + i));
+        many.add_tab(&children[i], static_cast<SessionTabId>(200 + i), rid);
+        root_ids.append(rid);
+    }
+    for (size_t i = 0; i < 10; ++i)
+        EXPECT(many.effective_branch_color(root_ids[i]) == auto_branch_color_for_index(i));
+    EXPECT(many.effective_branch_color(root_ids[8]) == BranchColor::Red);
+    EXPECT(many.effective_branch_color(root_ids[9]) == BranchColor::Orange);
+}
+
 int main()
 {
     test_opener_nesting_and_linearization();
@@ -352,6 +495,7 @@ int main()
     test_replace_tab_and_persistence_roundtrip();
     test_multi_selection();
     test_branch_color_tags_and_persistence();
+    test_auto_branch_colors();
     test_filtered_rows_show_matches_with_context();
     test_filter_text_matching();
     std::printf("All TreeTabModel unit tests passed!\n");

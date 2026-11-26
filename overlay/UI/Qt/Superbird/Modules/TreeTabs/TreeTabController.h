@@ -101,6 +101,7 @@ public:
     void focus_filter();
 
     // Branch color tags, persisted in TreeTabs.db.
+    bool auto_branch_colors_enabled() const;
     BranchColor branch_color(Tab const&) const;
     void set_branch_color(Tab&, BranchColor);
 

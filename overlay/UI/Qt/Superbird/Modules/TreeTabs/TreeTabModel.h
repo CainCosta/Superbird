@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <AK/Array.h>
 #include <AK/Function.h>
 #include <AK/HashMap.h>
 #include <AK/HashTable.h>
@@ -43,6 +44,18 @@ enum class BranchColor : u8 {
     Pink,
 };
 inline constexpr u8 BRANCH_COLOR_COUNT = 9;
+// Predictable repeating order used when automatic branch colors are enabled.
+inline constexpr Array<BranchColor, 8> AUTO_BRANCH_COLOR_PATTERN { {
+    BranchColor::Red,
+    BranchColor::Orange,
+    BranchColor::Yellow,
+    BranchColor::Green,
+    BranchColor::Teal,
+    BranchColor::Blue,
+    BranchColor::Purple,
+    BranchColor::Pink,
+} };
+BranchColor auto_branch_color_for_index(size_t index);
 // A stored value from a newer or corrupt database reads as no color.
 BranchColor branch_color_from_storage(i64);
 
@@ -116,15 +129,21 @@ public:
     Vector<VisibleTreeRow> visible_rows(
         Tab const* active_tab,
         Function<bool(Tab const&)> const& has_audio = {},
-        Function<bool(Tab const&)> const& needs_attention = {}) const;
+        Function<bool(Tab const&)> const& needs_attention = {},
+        Function<bool(Tab const&)> const& is_hidden = {}) const;
 
     // The rows to show while the sidebar's quick filter is on: every tab that matches, under its ancestors for context.
     // Branches open up to show their matches, whatever their collapsed state.
-    Vector<VisibleTreeRow> filtered_rows(Function<bool(Tab const&)> const& matches) const;
+    Vector<VisibleTreeRow> filtered_rows(
+        Function<bool(Tab const&)> const& matches,
+        Function<bool(Tab const&)> const& is_hidden = {}) const;
+
+    bool auto_branch_colors_enabled() const { return m_auto_branch_colors; }
+    void set_auto_branch_colors(bool enabled) { m_auto_branch_colors = enabled; }
 
     bool set_branch_color(TreeNodeId node_id, BranchColor color);
     BranchColor branch_color(TreeNodeId node_id) const;
-    BranchColor effective_branch_color(TreeNodeId node_id) const;
+    BranchColor effective_branch_color(TreeNodeId node_id, Function<bool(Tab const&)> const& is_hidden = {}) const;
 
     bool set_collapsed(TreeNodeId node_id, bool collapsed, bool auto_collapse_siblings = false);
     bool toggle_collapsed(TreeNodeId node_id, bool auto_collapse_siblings = false);
@@ -162,11 +181,13 @@ private:
     Vector<TreeNodeId> const& sibling_list(Optional<TreeNodeId> parent_id) const;
     void detach_from_parent(TreeNodeId node_id);
     void append_subtree(TreeNodeId node_id, Vector<TreeNodeId>& out) const;
+    bool is_visible_branch(TreeNodeId root_id, Function<bool(Tab const&)> const& is_hidden) const;
     void append_visible_rows(
         TreeNodeId node_id,
         size_t depth,
         u32 guide_mask,
         bool is_last_sibling,
+        BranchColor inherited_color,
         Tab const* active_tab,
         Function<bool(Tab const&)> const& has_audio,
         Function<bool(Tab const&)> const& needs_attention,
@@ -177,6 +198,7 @@ private:
         size_t depth,
         u32 guide_mask,
         bool is_last_sibling,
+        BranchColor inherited_color,
         HashTable<TreeNodeId> const& included,
         Vector<VisibleTreeRow>& out) const;
     void collect_descendant_indicators(
@@ -196,6 +218,7 @@ private:
 
     HashTable<TreeNodeId> m_selected_nodes;
     Optional<TreeNodeId> m_selection_anchor;
+    bool m_auto_branch_colors { false };
 };
 
 }
